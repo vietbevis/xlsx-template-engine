@@ -3,9 +3,11 @@ import { compileWorkbookToRenderPlan } from "../compiler";
 import type { WorkbookDefinition } from "../core/types";
 import type { RenderPlan } from "../compiler/render-plan";
 import { ExcelJsWorkbookAdapter } from "../adapters/exceljs/workbook-adapter";
+import type { RenderContext } from "../compiler/variable-engine";
 
 export interface WorkbookRenderOptions {
   adapter?: WorkbookOutputAdapter;
+  context?: RenderContext;
 }
 
 export interface WorkbookOutputAdapter {
@@ -24,7 +26,7 @@ export function renderWorkbook(
   workbook: WorkbookDefinition,
   options: WorkbookRenderOptions = {},
 ): WorkbookRenderer {
-  const renderPlan = compileWorkbookToRenderPlan(workbook);
+  const renderPlan = compileWorkbookToRenderPlan(workbook, { context: options.context });
   const adapter = options.adapter ?? new ExcelJsWorkbookAdapter();
 
   return {

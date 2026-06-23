@@ -8,11 +8,17 @@ import type {
 } from "../core/types";
 import type { RenderPlanBuilder } from "./render-plan-builder";
 import type { LayoutCursor } from "./layout-cursor";
+import {
+  interpolateCellValue,
+  interpolateVariables,
+  type VariableScope,
+} from "./variable-engine";
 
 export interface SheetContext {
   workbook: WorkbookDefinition;
   sheet: SheetDefinition;
   styles?: StyleRegistry;
+  variables: VariableScope;
 }
 
 export type BlockCompiler<TBlock extends Block = Block> = (
@@ -28,10 +34,12 @@ export type BlockCompilerRegistry = {
 
 export const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
   title(block, context, cursor, builder) {
+    const variables = createBlockVariableScope(context, block);
+
     builder.addCell(context.sheet.id, {
       row: cursor.row,
       column: cursor.column,
-      value: block.text,
+      value: interpolateVariables(block.text, variables),
       style: block.style,
     });
 
@@ -45,10 +53,12 @@ export const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
     cursor.advanceRows();
   },
   text(block, context, cursor, builder) {
+    const variables = createBlockVariableScope(context, block);
+
     builder.addCell(context.sheet.id, {
       row: cursor.row,
       column: cursor.column,
-      value: block.text,
+      value: interpolateVariables(block.text, variables),
       style: block.style,
     });
 
@@ -100,6 +110,7 @@ function compileGridBlock(
 ): void {
   const occupied = new Set<string>();
   let rowExtent = block.rows.length;
+  const variables = createBlockVariableScope(context, block);
 
   for (const [rowOffset, gridRow] of block.rows.entries()) {
     const absoluteRow = cursor.row + rowOffset;
@@ -127,7 +138,7 @@ function compileGridBlock(
       builder.addCell(context.sheet.id, {
         row: absoluteRow,
         column: absoluteColumn,
-        value: cell.value,
+        value: interpolateCellValue(cell.value, variables),
         style: cell.style,
       });
 
@@ -200,6 +211,7 @@ function compileTableBlock(
     throw new ReportEngineError("Table async iterable data is not supported until streaming renderer phase 15.");
   }
 
+  const variables = createBlockVariableScope(context, block);
   const headerDepth = calculateHeaderDepth(block.columns);
   const headerCells = buildHeaderMatrix(block.columns, headerDepth);
   const leafColumns = flattenLeafColumns(block.columns);
@@ -208,7 +220,7 @@ function compileTableBlock(
     builder.addCell(context.sheet.id, {
       row: cursor.row + headerCell.rowOffset,
       column: cursor.column + headerCell.columnOffset,
-      value: headerCell.title,
+      value: interpolateVariables(headerCell.title, variables),
       style: block.headerStyle,
     });
 
@@ -241,13 +253,21 @@ function compileTableBlock(
       builder.addCell(context.sheet.id, {
         row: absoluteRow,
         column: cursor.column + columnOffset,
-        value,
+        value: interpolateCellValue(value, variables),
         style: column.style ?? block.bodyStyle,
       });
     }
   }
 
   cursor.advanceRows(block.data.length + headerDepth);
+}
+
+function createBlockVariableScope(context: SheetContext, block: Block): VariableScope {
+  return {
+    workbook: context.variables.workbook,
+    sheet: context.variables.sheet,
+    block: block.context,
+  };
 }
 
 function resolveTableCellValue(

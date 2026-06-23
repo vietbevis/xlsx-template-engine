@@ -7,6 +7,7 @@ import { runGridBlockTest } from "./grid-block.test";
 import { runTableBlockTest } from "./table-block.test";
 import { runHeaderTreeTest } from "./header-tree.test";
 import { runMergeEngineTest } from "./merge-engine.test";
+import { runVariableEngineTest } from "./variable-engine.test";
 
 void (async () => {
   await runStyleRegistryTest();
@@ -15,6 +16,7 @@ void (async () => {
   await runTableBlockTest();
   await runHeaderTreeTest();
   await runMergeEngineTest();
+  await runVariableEngineTest();
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

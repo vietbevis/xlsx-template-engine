@@ -113,12 +113,14 @@ export interface WorkbookMetadata {
 export interface WorkbookDefinition {
   metadata?: WorkbookMetadata;
   styles?: StyleRegistry;
+  context?: Record<string, unknown>;
   sheets: SheetDefinition[];
 }
 
 export interface SheetDefinition {
   id: string;
   name: string;
+  context?: Record<string, unknown>;
   blocks: Block[];
 }
 
@@ -131,6 +133,7 @@ export type Block =
 
 export interface BaseBlock {
   type: string;
+  context?: Record<string, unknown>;
 }
 
 export interface TitleBlock extends BaseBlock, StyleReference {

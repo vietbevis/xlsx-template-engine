@@ -48,16 +48,22 @@ export {
   compileWorkbookToRenderPlan,
   defaultBlockCompilerRegistry,
   assertMergeDoesNotOverlap,
+  interpolateCellValue,
+  interpolateVariables,
   LayoutCursor,
   normalizeMergeRange,
+  resolvePath,
   RenderPlanBuilder,
 } from "./compiler";
 
 export type {
   BlockCompiler,
   BlockCompilerRegistry,
+  CompileWorkbookOptions,
   MergeRange,
+  RenderContext,
   SheetContext,
+  VariableScope,
 } from "./compiler";
 
 export type {

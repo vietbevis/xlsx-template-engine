@@ -33,14 +33,13 @@ Default policy:
 
 ## Implementation Checklist
 
-- Tao path resolver cho object nested va array length.
-- Tao interpolate function thay the nhieu variable trong cung string.
-- Chi interpolate string values; number/date/boolean giu nguyen.
-- Them tests cho nested path, length, missing path.
+- [x] Tao path resolver cho object nested va array length.
+- [x] Tao interpolate function thay the nhieu variable trong cung string.
+- [x] Chi interpolate string values; number/date/boolean giu nguyen.
+- [x] Them tests cho nested path, length, missing path.
 
 ## Acceptance
 
-- Nested path resolve dung.
-- Array length resolve dung.
-- Missing variable khong crash o default mode.
-
+- [x] Nested path resolve dung.
+- [x] Array length resolve dung.
+- [x] Missing variable khong crash o default mode.

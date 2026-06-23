@@ -5,11 +5,23 @@ import type { RenderPlan } from "./render-plan";
 import { RenderPlanBuilder } from "./render-plan-builder";
 import { LayoutCursor } from "./layout-cursor";
 import { compileBlock } from "./block-compiler";
+import type { RenderContext } from "./variable-engine";
 
-export function compileWorkbookToRenderPlan(workbook: WorkbookDefinition): RenderPlan {
+export interface CompileWorkbookOptions {
+  context?: RenderContext;
+}
+
+export function compileWorkbookToRenderPlan(
+  workbook: WorkbookDefinition,
+  options: CompileWorkbookOptions = {},
+): RenderPlan {
   validateWorkbookDefinition(workbook);
   createSheetRegistry(workbook.sheets);
 
+  const workbookContext = {
+    ...(workbook.context ?? {}),
+    ...(options.context ?? {}),
+  };
   const builder = new RenderPlanBuilder(workbook.metadata, workbook.styles);
 
   for (const sheet of workbook.sheets) {
@@ -21,6 +33,10 @@ export function compileWorkbookToRenderPlan(workbook: WorkbookDefinition): Rende
       workbook,
       sheet,
       styles: workbook.styles,
+      variables: {
+        workbook: workbookContext,
+        sheet: sheet.context,
+      },
     };
     const cursor = new LayoutCursor();
 
@@ -42,6 +58,11 @@ export {
   assertMergeDoesNotOverlap,
   normalizeMergeRange,
 } from "./merge-engine";
+export {
+  interpolateCellValue,
+  interpolateVariables,
+  resolvePath,
+} from "./variable-engine";
 
 export type {
   BlockCompiler,
@@ -51,3 +72,7 @@ export type {
 export type {
   MergeRange,
 } from "./merge-engine";
+export type {
+  RenderContext,
+  VariableScope,
+} from "./variable-engine";

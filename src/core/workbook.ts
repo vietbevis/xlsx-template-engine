@@ -8,8 +8,10 @@ export function defineWorkbook(definition: WorkbookDefinition): WorkbookDefiniti
     ...definition,
     metadata: definition.metadata ? cloneWorkbookMetadata(definition.metadata) : undefined,
     styles: definition.styles ? { ...definition.styles } : undefined,
+    context: definition.context ? { ...definition.context } : undefined,
     sheets: definition.sheets.map((sheet) => ({
       ...sheet,
+      context: sheet.context ? { ...sheet.context } : undefined,
       blocks: [...sheet.blocks],
     })),
   };
