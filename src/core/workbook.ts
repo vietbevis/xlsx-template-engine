@@ -1,7 +1,13 @@
 import { validateWorkbookDefinition } from "./validation";
-import type { WorkbookDefinition, WorkbookMetadata } from "./types";
+import type {
+  TypedWorkbookDefinition,
+  WorkbookDefinition,
+  WorkbookMetadata,
+} from "./types";
 
-export function defineWorkbook(definition: WorkbookDefinition): WorkbookDefinition {
+export function defineWorkbook<const TWorkbook extends WorkbookDefinition>(
+  definition: TWorkbook & TypedWorkbookDefinition<TWorkbook>,
+): TWorkbook {
   validateWorkbookDefinition(definition);
 
   return {
@@ -14,7 +20,7 @@ export function defineWorkbook(definition: WorkbookDefinition): WorkbookDefiniti
       context: sheet.context ? { ...sheet.context } : undefined,
       blocks: [...sheet.blocks],
     })),
-  };
+  } as TWorkbook;
 }
 
 export function isWorkbookDefinition(value: unknown): value is WorkbookDefinition {

@@ -51,6 +51,8 @@ export type {
   TableColumn,
   TextBlock,
   TitleBlock,
+  TypedFormulaDefinition,
+  TypedWorkbookDefinition,
   VerticalAlignmentStyle,
   WorkbookDefinition,
   WorkbookMetadata,

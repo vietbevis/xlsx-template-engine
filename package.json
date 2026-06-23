@@ -7,6 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "tsc --ignoreConfig --noEmit --target ES2020 --module CommonJS --strict --noUncheckedIndexedAccess --exactOptionalPropertyTypes false --esModuleInterop --skipLibCheck --types node tests/workbook-type-safety.test.ts",
     "test": "tsx tests/run.ts"
   },
   "keywords": [],

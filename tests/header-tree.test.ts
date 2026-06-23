@@ -79,14 +79,39 @@ const complexWorkbook = defineWorkbook({
       font: { bold: true },
       fill: { foregroundColor: { argb: "FFE2F0D9" } },
       alignment: { horizontal: "center", vertical: "middle", wrapText: true },
-      border: { bottom: { style: "thin" } },
+      border: {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      },
+    },
+    bordered: {
+      border: {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      },
     },
     body: {
       alignment: { horizontal: "left" },
+      border: {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      },
     },
     number: {
       numberFormat: "#,##0",
       alignment: { horizontal: "right" },
+      border: {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      },
     },
   },
   sheets: [
@@ -99,15 +124,18 @@ const complexWorkbook = defineWorkbook({
           headerStyle: "header",
           bodyStyle: "body",
           columns: [
-            { title: "Lecturer", key: "name", width: 24 },
+            { title: "Lecturer", key: "name", width: 24, style: "bordered" },
             {
               title: "Workload",
+              style: "bordered",
               children: [
                 {
                   title: "Teaching",
+                  style: "bordered",
                   children: [
                     {
                       title: "Regular",
+                      style: "bordered",
                       children: [
                         {
                           title: "Hours",
@@ -134,6 +162,7 @@ const complexWorkbook = defineWorkbook({
                 },
                 {
                   title: "Research",
+                  style: "bordered",
                   children: [
                     {
                       title: "Projects",
@@ -225,14 +254,14 @@ export async function runHeaderTreeTest(): Promise<void> {
   await renderedWorkbook.xlsx.readFile(outputPath);
 
   const sheet = renderedWorkbook.getWorksheet("Nested Header");
-  assert.equal(sheet.getCell("A1").value, "Lecturer");
-  assert.equal(sheet.getCell("B1").value, "Teaching");
-  assert.equal(sheet.getCell("B2").value, "Hours");
-  assert.equal(sheet.getCell("C2").value, "Amount");
-  assert.equal(sheet.getCell("A3").value, "Nguyen Van A");
-  assert.equal(sheet.getCell("B3").value, 12);
-  assert.equal(sheet.getCell("C3").value, 1800000);
-  assert.equal(sheet.getCell("A5").value, "After nested table");
+  assert.equal(sheet?.getCell("A1").value, "Lecturer");
+  assert.equal(sheet?.getCell("B1").value, "Teaching");
+  assert.equal(sheet?.getCell("B2").value, "Hours");
+  assert.equal(sheet?.getCell("C2").value, "Amount");
+  assert.equal(sheet?.getCell("A3").value, "Nguyen Van A");
+  assert.equal(sheet?.getCell("B3").value, 12);
+  assert.equal(sheet?.getCell("C3").value, 1800000);
+  assert.equal(sheet?.getCell("A5").value, "After nested table");
 
   const complexRenderPlan = compileWorkbookToRenderPlan(complexWorkbook);
   const complexSheetPlan = complexRenderPlan.sheets[0];
@@ -297,18 +326,24 @@ export async function runHeaderTreeTest(): Promise<void> {
   const complexSheet = complexRenderedWorkbook.getWorksheet(
     "Complex Nested Header",
   );
-  assert.equal(complexSheet.getCell("A1").value, "Lecturer");
-  assert.equal(complexSheet.getCell("B1").value, "Workload");
-  assert.equal(complexSheet.getCell("G1").value, "Total");
-  assert.equal(complexSheet.getCell("B2").value, "Teaching");
-  assert.equal(complexSheet.getCell("E2").value, "Research");
-  assert.equal(complexSheet.getCell("B3").value, "Regular");
-  assert.equal(complexSheet.getCell("D3").value, "Overtime");
-  assert.equal(complexSheet.getCell("B4").value, "Hours");
-  assert.equal(complexSheet.getCell("C4").value, "Amount");
-  assert.equal(complexSheet.getCell("A5").value, "Nguyen Van A");
-  assert.equal(complexSheet.getCell("G5").value, 2400000);
-  assert.equal(complexSheet.getCell("A7").value, "After complex nested table");
+  assert.equal(complexSheet?.getCell("A1").value, "Lecturer");
+  assert.equal(complexSheet?.getCell("B1").value, "Workload");
+  assert.equal(complexSheet?.getCell("G1").value, "Total");
+  assert.equal(complexSheet?.getCell("B2").value, "Teaching");
+  assert.equal(complexSheet?.getCell("E2").value, "Research");
+  assert.equal(complexSheet?.getCell("B3").value, "Regular");
+  assert.equal(complexSheet?.getCell("D3").value, "Overtime");
+  assert.equal(complexSheet?.getCell("B4").value, "Hours");
+  assert.equal(complexSheet?.getCell("C4").value, "Amount");
+  assert.equal(complexSheet?.getCell("A5").value, "Nguyen Van A");
+  assert.equal(complexSheet?.getCell("G5").value, 2400000);
+  assert.equal(complexSheet?.getCell("A7").value, "After complex nested table");
+  assert.equal(complexSheet?.getCell("C1").border.top?.style, "thin");
+  assert.equal(complexSheet?.getCell("C1").border.bottom?.style, "thin");
+  assert.equal(complexSheet?.getCell("A4").border.left?.style, "thin");
+  assert.equal(complexSheet?.getCell("A4").border.bottom?.style, "thin");
+  assert.equal(complexSheet?.getCell("G4").border.right?.style, "thin");
+  assert.equal(complexSheet?.getCell("G4").border.bottom?.style, "thin");
 
   assert.throws(
     () =>

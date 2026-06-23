@@ -274,3 +274,278 @@ export interface TableColumn<
   children?: TableColumn<Row>[];
   width?: number;
 }
+
+export type TypedWorkbookDefinition<TWorkbook extends WorkbookDefinition> =
+  Omit<TWorkbook, "sheets"> & {
+    sheets: {
+      [TIndex in keyof TWorkbook["sheets"]]: TWorkbook["sheets"][TIndex] extends SheetDefinition
+        ? TypedSheetDefinition<TWorkbook, TWorkbook["sheets"][TIndex]>
+        : TWorkbook["sheets"][TIndex];
+    };
+  };
+
+type TypedSheetDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+> = Omit<TSheet, "blocks"> & {
+  blocks: {
+    [TIndex in keyof TSheet["blocks"]]: TSheet["blocks"][TIndex] extends Block
+      ? TypedBlockDefinition<TWorkbook, TSheet, TSheet["blocks"][TIndex]>
+      : TSheet["blocks"][TIndex];
+  };
+};
+
+type TypedBlockDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TBlock extends Block,
+> = TBlock extends GridBlock
+  ? TypedGridBlock<TWorkbook, TSheet, TBlock>
+  : TBlock extends TableBlock<infer TRow>
+    ? TypedTableBlock<TWorkbook, TSheet, TBlock, TRow>
+    : TBlock;
+
+type TypedGridBlock<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TBlock extends GridBlock,
+> = Omit<TBlock, "rows"> & {
+  rows: {
+    [TRowIndex in keyof TBlock["rows"]]: TBlock["rows"][TRowIndex] extends GridRow
+      ? Omit<TBlock["rows"][TRowIndex], "cells"> & {
+          cells: {
+            [TCellIndex in keyof TBlock["rows"][TRowIndex]["cells"]]: TBlock["rows"][TRowIndex]["cells"][TCellIndex] extends GridCell
+              ? TypedGridCell<TWorkbook, TSheet, TBlock["rows"][TRowIndex]["cells"][TCellIndex]>
+              : TBlock["rows"][TRowIndex]["cells"][TCellIndex];
+          };
+        }
+      : TBlock["rows"][TRowIndex];
+  };
+};
+
+type TypedGridCell<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TCell extends GridCell,
+> = Omit<TCell, "value"> & {
+  value?: TypedCellContent<
+    TWorkbook,
+    SheetIdOf<TSheet>,
+    SheetGridKeys<TWorkbook, SheetIdOf<TSheet>>
+  >;
+};
+
+type TypedTableBlock<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TBlock extends TableBlock<TRow>,
+  TRow,
+> = Omit<TBlock, "columns"> & {
+  columns: TypedTableColumns<
+    TWorkbook,
+    TSheet,
+    TRow,
+    TBlock["columns"],
+    TableColumnKeys<TBlock["columns"]>
+  >;
+};
+
+type TypedTableColumns<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TRow,
+  TColumns extends TableColumn<TRow>[],
+  TAllKeys extends string,
+> = {
+  [TIndex in keyof TColumns]: TColumns[TIndex] extends TableColumn<TRow>
+    ? TypedTableColumn<TWorkbook, TSheet, TRow, TColumns[TIndex], TAllKeys>
+    : TColumns[TIndex];
+};
+
+type TypedTableColumn<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TRow,
+  TColumn extends TableColumn<TRow>,
+  TAllKeys extends string,
+> = TColumn extends { children: TableColumn<TRow>[] }
+  ? Omit<TColumn, "children"> & {
+      children: TypedTableColumns<
+        TWorkbook,
+        TSheet,
+        TRow,
+        TColumn["children"],
+        TAllKeys
+      >;
+    }
+  : Omit<TColumn, "accessor"> & {
+      accessor?: (row: TRow) => TypedCellContent<TWorkbook, SheetIdOf<TSheet>, TAllKeys>;
+    };
+
+type TypedCellContent<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = CellValue | TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+
+export type TypedFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string = SheetIds<TWorkbook>,
+  TLocalKeys extends string = SheetGridKeys<TWorkbook, TCurrentSheetId>,
+> =
+  | RawFormulaDefinition
+  | LiteralFormulaDefinition
+  | TypedRefFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedRangeFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedSumFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedRoundFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedIfFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedCallFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedBinaryFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+
+type TypedRefFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> =
+  | { type: "ref"; key: TLocalKeys; sheetId?: undefined }
+  | {
+      [TSheetId in SheetIds<TWorkbook>]: {
+        type: "ref";
+        sheetId: TSheetId;
+        key: SheetGridKeys<TWorkbook, TSheetId>;
+      };
+    }[SheetIds<TWorkbook>];
+
+type TypedRangeFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> =
+  | {
+      type: "range";
+      startKey: TLocalKeys;
+      endKey: TLocalKeys;
+      sheetId?: undefined;
+    }
+  | {
+      [TSheetId in SheetIds<TWorkbook>]: {
+        type: "range";
+        sheetId: TSheetId;
+        startKey: SheetGridKeys<TWorkbook, TSheetId>;
+        endKey: SheetGridKeys<TWorkbook, TSheetId>;
+      };
+    }[SheetIds<TWorkbook>];
+
+type TypedFormulaRangeReference<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> =
+  | {
+      startKey: TLocalKeys;
+      endKey: TLocalKeys;
+      sheetId?: undefined;
+    }
+  | {
+      [TSheetId in SheetIds<TWorkbook>]: {
+        sheetId: TSheetId;
+        startKey: SheetGridKeys<TWorkbook, TSheetId>;
+        endKey: SheetGridKeys<TWorkbook, TSheetId>;
+      };
+    }[SheetIds<TWorkbook>];
+
+type TypedSumFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: "sum";
+  range?: TypedFormulaRangeReference<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  values?: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
+};
+
+type TypedRoundFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: "round";
+  value: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  digits: number;
+};
+
+type TypedIfFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: "if";
+  condition: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  whenTrue: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  whenFalse: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+};
+
+type TypedCallFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: "call";
+  name: string;
+  args: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
+};
+
+type TypedBinaryFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: "binary";
+  operator: FormulaBinaryOperator;
+  left: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  right: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+};
+
+type SheetIds<TWorkbook extends WorkbookDefinition> = Extract<
+  TWorkbook["sheets"][number]["id"],
+  string
+>;
+
+type SheetIdOf<TSheet extends SheetDefinition> = Extract<TSheet["id"], string>;
+
+type SheetById<
+  TWorkbook extends WorkbookDefinition,
+  TSheetId extends string,
+> = Extract<TWorkbook["sheets"][number], { id: TSheetId }>;
+
+type SheetGridKeys<
+  TWorkbook extends WorkbookDefinition,
+  TSheetId extends string,
+> = SheetById<TWorkbook, TSheetId> extends infer TSheet
+  ? TSheet extends SheetDefinition
+    ? TSheet["blocks"][number] extends infer TBlock
+      ? TBlock extends GridBlock
+        ? GridBlockKeys<TBlock>
+        : never
+      : never
+    : never
+  : never;
+
+type GridBlockKeys<TBlock extends GridBlock> =
+  TBlock["rows"][number]["cells"][number] extends infer TCell
+    ? TCell extends { key: infer TKey }
+      ? Extract<TKey, string>
+      : never
+    : never;
+
+type TableColumnKeys<TColumns extends TableColumn<any>[]> =
+  TColumns[number] extends infer TColumn
+    ? TColumn extends TableColumn<any>
+      ? TColumn extends { children: TableColumn<any>[] }
+        ? TableColumnKeys<TColumn["children"]>
+        : TColumn extends { key: infer TKey }
+          ? Extract<TKey, string>
+          : never
+      : never
+    : never;

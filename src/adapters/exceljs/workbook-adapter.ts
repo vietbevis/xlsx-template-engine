@@ -1,6 +1,10 @@
 import ExcelJS from "exceljs";
 import type { Writable } from "stream";
-import type { RenderPlan } from "../../compiler/render-plan";
+import type {
+  RenderCell,
+  RenderPlan,
+  RenderPlanSheet,
+} from "../../compiler/render-plan";
 import { ReportEngineError } from "../../core/errors";
 import type {
   BorderStyleDefinition,
@@ -8,6 +12,10 @@ import type {
   ColorStyleDefinition,
   FillStyleDefinition,
 } from "../../core/types";
+
+interface StyleableWorksheet {
+  getCell(row: number, column: number): ExcelJS.Cell;
+}
 
 export class ExcelJsWorkbookAdapter {
   async writeFile(renderPlan: RenderPlan, filePath: string): Promise<void> {
@@ -64,6 +72,8 @@ export class ExcelJsWorkbookAdapter {
           this.applyCellPlan(row.getCell(cellPlan.column), cellPlan, renderPlan);
         }
 
+        this.applyMergedStyleCoverage(sheet, sheetPlan, renderPlan, rowPlan.index);
+
         row.commit();
       }
     }
@@ -103,6 +113,8 @@ export class ExcelJsWorkbookAdapter {
           merge.endColumn,
         );
       }
+
+      this.applyMergedStyleCoverage(sheet, sheetPlan, renderPlan);
     }
 
     return workbook;
@@ -126,6 +138,64 @@ export class ExcelJsWorkbookAdapter {
 
       cell.style = this.mapCellStyle(style);
     }
+  }
+
+  private applyMergedStyleCoverage(
+    sheet: StyleableWorksheet,
+    sheetPlan: RenderPlanSheet,
+    renderPlan: RenderPlan,
+    rowIndex?: number,
+  ): void {
+    for (const merge of sheetPlan.merges) {
+      if (rowIndex !== undefined && (rowIndex < merge.startRow || rowIndex > merge.endRow)) {
+        continue;
+      }
+
+      const masterCellPlan = this.findCellPlan(
+        sheetPlan,
+        merge.startRow,
+        merge.startColumn,
+      );
+
+      if (!masterCellPlan?.style) {
+        continue;
+      }
+
+      const style = renderPlan.styles?.[masterCellPlan.style];
+
+      if (!style) {
+        throw new ReportEngineError(
+          `Render plan references unknown style "${masterCellPlan.style}".`,
+        );
+      }
+
+      if (!style.border) {
+        continue;
+      }
+
+      const startRow = rowIndex ?? merge.startRow;
+      const endRow = rowIndex ?? merge.endRow;
+
+      for (let row = startRow; row <= endRow; row += 1) {
+        for (
+          let column = merge.startColumn;
+          column <= merge.endColumn;
+          column += 1
+        ) {
+          sheet.getCell(row, column).style = this.mapCellStyle(style);
+        }
+      }
+    }
+  }
+
+  private findCellPlan(
+    sheetPlan: RenderPlanSheet,
+    rowIndex: number,
+    columnIndex: number,
+  ): RenderCell | undefined {
+    return sheetPlan.rows
+      .find((row) => row.index === rowIndex)
+      ?.cells.find((cell) => cell.column === columnIndex);
   }
 
   private createFormulaValue(formula: string, result: unknown): ExcelJS.CellValue {
