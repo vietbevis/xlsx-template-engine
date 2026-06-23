@@ -135,12 +135,14 @@ export interface BaseBlock {
 
 export interface TitleBlock extends BaseBlock, StyleReference {
   type: "title";
-  text: CellValue;
+  text: string;
+  height?: number;
 }
 
 export interface TextBlock extends BaseBlock, StyleReference {
   type: "text";
-  text: CellValue;
+  text: string;
+  height?: number;
 }
 
 export interface SpacerBlock extends BaseBlock {

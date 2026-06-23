@@ -130,11 +130,13 @@ function validateBlock(
 
   switch (blockType) {
     case "title":
-      validateCellValue(block.text, `Block ${blockIndex} in sheet "${sheetId}" title text`);
+      validateBlockText(block.text, `Block ${blockIndex} in sheet "${sheetId}" title text`);
+      validateBlockHeight(block.height, `Block ${blockIndex} in sheet "${sheetId}" title height`);
       validateStyleReference(block.style, styles, `Block ${blockIndex} in sheet "${sheetId}"`);
       return;
     case "text":
-      validateCellValue(block.text, `Block ${blockIndex} in sheet "${sheetId}" text`);
+      validateBlockText(block.text, `Block ${blockIndex} in sheet "${sheetId}" text`);
+      validateBlockHeight(block.height, `Block ${blockIndex} in sheet "${sheetId}" text height`);
       validateStyleReference(block.style, styles, `Block ${blockIndex} in sheet "${sheetId}"`);
       return;
     case "spacer":
@@ -296,18 +298,22 @@ function validateColor(color: unknown, label: string): void {
   }
 }
 
-function validateCellValue(value: unknown, label: string): void {
-  if (
-    value === null ||
-    typeof value === "string" ||
-    typeof value === "number" ||
-    typeof value === "boolean" ||
-    value instanceof Date
-  ) {
+function validateBlockText(value: unknown, label: string): void {
+  if (typeof value === "string") {
     return;
   }
 
-  throw new ReportEngineError(`${label} must be a valid cell value.`);
+  throw new ReportEngineError(`${label} must be a string.`);
+}
+
+function validateBlockHeight(value: unknown, label: string): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (typeof value !== "number" || value <= 0) {
+    throw new ReportEngineError(`${label} must be greater than 0.`);
+  }
 }
 
 function validateSheetName(sheetName: string, sheetId: string): void {

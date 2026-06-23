@@ -33,6 +33,14 @@ export const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
       value: block.text,
       style: block.style,
     });
+
+    if (block.height !== undefined) {
+      builder.setRowHeight(context.sheet.id, {
+        row: cursor.row,
+        height: block.height,
+      });
+    }
+
     cursor.advanceRows();
   },
   text(block, context, cursor, builder) {
@@ -42,6 +50,14 @@ export const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
       value: block.text,
       style: block.style,
     });
+
+    if (block.height !== undefined) {
+      builder.setRowHeight(context.sheet.id, {
+        row: cursor.row,
+        height: block.height,
+      });
+    }
+
     cursor.advanceRows();
   },
   spacer(block, _context, cursor) {

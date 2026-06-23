@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { mkdir } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import {
   ReportEngineError,
@@ -44,9 +45,12 @@ const workbook = defineWorkbook({
 });
 
 export async function runStyleRegistryTest(): Promise<void> {
-  const buffer = await renderWorkbook(workbook).writeBuffer();
+  const outputPath = "output/phase-5-style-registry-demo.xlsx";
+  await mkdir("output", { recursive: true });
+  await renderWorkbook(workbook).writeFile(outputPath);
+
   const renderedWorkbook = new ExcelJS.Workbook();
-  await renderedWorkbook.xlsx.load(buffer);
+  await renderedWorkbook.xlsx.readFile(outputPath);
 
   const sheet = renderedWorkbook.getWorksheet("Summary");
   const cell = sheet.getCell("A1");
