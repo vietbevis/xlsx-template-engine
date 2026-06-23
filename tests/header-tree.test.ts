@@ -1,6 +1,6 @@
+import ExcelJS from "exceljs";
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
-import ExcelJS from "exceljs";
 import {
   ReportEngineError,
   compileWorkbookToRenderPlan,
@@ -109,37 +109,73 @@ const complexWorkbook = defineWorkbook({
                     {
                       title: "Regular",
                       children: [
-                        { title: "Hours", key: "hours", width: 12, style: "number" },
+                        {
+                          title: "Hours",
+                          key: "hours",
+                          width: 12,
+                          style: "number",
+                        },
                         {
                           title: "Amount",
-                          accessor: (row: ComplexLecturerRow) => row.hours * row.rate,
+                          accessor: (row: ComplexLecturerRow) =>
+                            row.hours * row.rate,
                           width: 16,
                           style: "number",
                         },
                       ],
                     },
-                    { title: "Overtime", key: "overtimeHours", width: 12, style: "number" },
+                    {
+                      title: "Overtime",
+                      key: "overtimeHours",
+                      width: 12,
+                      style: "number",
+                    },
                   ],
                 },
                 {
                   title: "Research",
                   children: [
-                    { title: "Projects", key: "projects", width: 12, style: "number" },
-                    { title: "Points", key: "points", width: 12, style: "number" },
+                    {
+                      title: "Projects",
+                      key: "projects",
+                      width: 12,
+                      style: "number",
+                    },
+                    {
+                      title: "Points",
+                      key: "points",
+                      width: 12,
+                      style: "number",
+                    },
                   ],
                 },
               ],
             },
             {
               title: "Total",
-              accessor: (row: ComplexLecturerRow) => row.hours * row.rate + row.overtimeHours * 200000,
+              accessor: (row: ComplexLecturerRow) =>
+                row.hours * row.rate + row.overtimeHours * 200000,
               width: 16,
               style: "number",
             },
           ],
           data: [
-            { name: "Nguyen Van A", hours: 12, rate: 150000, overtimeHours: 3, projects: 2, points: 18 },
-            { name: "Tran Thi B", hours: 8, rate: 175000, overtimeHours: 5, projects: 1, points: 14 },
+            {
+              name: "Nguyen Van A",
+              hours: 12,
+              rate: 150000,
+              overtimeHours: 3,
+              projects: 2,
+              points: 18,
+            },
+            {
+              name: "Tran Thi B",
+              hours: 8,
+              rate: 175000,
+              overtimeHours: 5,
+              projects: 1,
+              points: 14,
+            },
           ],
         },
         { type: "text", text: "After complex nested table", style: "body" },
@@ -227,7 +263,10 @@ export async function runHeaderTreeTest(): Promise<void> {
     ["Tran Thi B", 8, 1400000, 5, 1, 14, 2400000],
   );
   assert.equal(complexSheetPlan.rows[6]?.index, 7);
-  assert.equal(complexSheetPlan.rows[6]?.cells[0]?.value, "After complex nested table");
+  assert.equal(
+    complexSheetPlan.rows[6]?.cells[0]?.value,
+    "After complex nested table",
+  );
   assert.deepEqual(complexSheetPlan.merges, [
     { startRow: 1, startColumn: 1, endRow: 4, endColumn: 1 },
     { startRow: 1, startColumn: 2, endRow: 1, endColumn: 6 },
@@ -255,7 +294,9 @@ export async function runHeaderTreeTest(): Promise<void> {
   const complexRenderedWorkbook = new ExcelJS.Workbook();
   await complexRenderedWorkbook.xlsx.readFile(complexOutputPath);
 
-  const complexSheet = complexRenderedWorkbook.getWorksheet("Complex Nested Header");
+  const complexSheet = complexRenderedWorkbook.getWorksheet(
+    "Complex Nested Header",
+  );
   assert.equal(complexSheet.getCell("A1").value, "Lecturer");
   assert.equal(complexSheet.getCell("B1").value, "Workload");
   assert.equal(complexSheet.getCell("G1").value, "Total");

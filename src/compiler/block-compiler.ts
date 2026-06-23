@@ -1,13 +1,22 @@
 import { ReportEngineError } from "../core/errors";
 import type {
   Block,
-  CellValue,
+  CellContent,
+  GridCell,
   SheetDefinition,
   StyleRegistry,
   WorkbookDefinition,
 } from "../core/types";
-import type { RenderPlanBuilder } from "./render-plan-builder";
+import {
+  compileCellContent,
+  createFormulaCompileContext,
+  formatCellAddress,
+  isFormulaDefinition,
+  type CellAddress,
+  type FormulaCompileContext,
+} from "./formula-engine";
 import type { LayoutCursor } from "./layout-cursor";
+import type { RenderPlanBuilder } from "./render-plan-builder";
 import {
   interpolateCellValue,
   interpolateVariables,
@@ -92,14 +101,18 @@ export function compileBlock(
   const compiler = registry[block.type] as BlockCompiler | undefined;
 
   if (!compiler) {
-    throw new ReportEngineError(`Unknown block type "${block.type}" in sheet "${context.sheet.id}".`);
+    throw new ReportEngineError(
+      `Unknown block type "${block.type}" in sheet "${context.sheet.id}".`,
+    );
   }
 
   compiler(block, context, cursor, builder);
 }
 
 function throwUnsupportedBlock(blockType: Block["type"]): never {
-  throw new ReportEngineError(`Block type "${blockType}" is not supported by the compiler yet.`);
+  throw new ReportEngineError(
+    `Block type "${blockType}" is not supported by the compiler yet.`,
+  );
 }
 
 function compileGridBlock(
@@ -109,8 +122,9 @@ function compileGridBlock(
   builder: RenderPlanBuilder,
 ): void {
   const occupied = new Set<string>();
-  let rowExtent = block.rows.length;
+  const placements: GridCellPlacement[] = [];
   const variables = createBlockVariableScope(context, block);
+  let rowExtent = block.rows.length;
 
   for (const [rowOffset, gridRow] of block.rows.entries()) {
     const absoluteRow = cursor.row + rowOffset;
@@ -131,32 +145,24 @@ function compileGridBlock(
 
       const colSpan = cell.colSpan ?? 1;
       const rowSpan = cell.rowSpan ?? 1;
-      assertGridCellDoesNotOverlap(occupied, rowOffset, columnOffset, rowSpan, colSpan);
+      assertGridCellDoesNotOverlap(
+        occupied,
+        rowOffset,
+        columnOffset,
+        rowSpan,
+        colSpan,
+      );
 
       const absoluteColumn = cursor.column + columnOffset;
-
-      builder.addCell(context.sheet.id, {
+      placements.push({
+        cell,
+        rowOffset,
+        columnOffset,
+        rowSpan,
+        colSpan,
         row: absoluteRow,
         column: absoluteColumn,
-        value: interpolateCellValue(cell.value, variables),
-        style: cell.style,
       });
-
-      if (cell.width !== undefined) {
-        builder.setColumnWidth(context.sheet.id, {
-          column: absoluteColumn,
-          width: cell.width,
-        });
-      }
-
-      if (rowSpan > 1 || colSpan > 1) {
-        builder.addMerge(context.sheet.id, {
-          startRow: absoluteRow,
-          startColumn: absoluteColumn,
-          endRow: absoluteRow + rowSpan - 1,
-          endColumn: absoluteColumn + colSpan - 1,
-        });
-      }
 
       markGridCellOccupied(occupied, rowOffset, columnOffset, rowSpan, colSpan);
       rowExtent = Math.max(rowExtent, rowOffset + rowSpan);
@@ -164,7 +170,68 @@ function compileGridBlock(
     }
   }
 
+  const formulaContext = createFormulaCompileContext(
+    createGridCellKeyMap(placements),
+  );
+
+  for (const placement of placements) {
+    builder.addCell(context.sheet.id, {
+      row: placement.row,
+      column: placement.column,
+      ...compileCellContent(
+        interpolateCellValue(placement.cell.value, variables),
+        formulaContext,
+      ),
+      style: placement.cell.style,
+    });
+
+    if (placement.cell.width !== undefined) {
+      builder.setColumnWidth(context.sheet.id, {
+        column: placement.column,
+        width: placement.cell.width,
+      });
+    }
+
+    if (placement.rowSpan > 1 || placement.colSpan > 1) {
+      builder.addMerge(context.sheet.id, {
+        startRow: placement.row,
+        startColumn: placement.column,
+        endRow: placement.row + placement.rowSpan - 1,
+        endColumn: placement.column + placement.colSpan - 1,
+      });
+    }
+  }
+
   cursor.advanceRows(rowExtent);
+}
+
+interface GridCellPlacement {
+  cell: GridCell;
+  rowOffset: number;
+  columnOffset: number;
+  rowSpan: number;
+  colSpan: number;
+  row: number;
+  column: number;
+}
+
+function createGridCellKeyMap(
+  placements: GridCellPlacement[],
+): Map<string, CellAddress> {
+  const keyMap = new Map<string, CellAddress>();
+
+  for (const placement of placements) {
+    if (!placement.cell.key) {
+      continue;
+    }
+
+    registerCellKey(keyMap, placement.cell.key, {
+      row: placement.row,
+      column: placement.column,
+    });
+  }
+
+  return keyMap;
 }
 
 function assertGridCellDoesNotOverlap(
@@ -175,7 +242,11 @@ function assertGridCellDoesNotOverlap(
   colSpan: number,
 ): void {
   for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
-    for (let column = columnOffset; column < columnOffset + colSpan; column += 1) {
+    for (
+      let column = columnOffset;
+      column < columnOffset + colSpan;
+      column += 1
+    ) {
       if (occupied.has(occupancyKey(row, column))) {
         throw new ReportEngineError("Grid cell merge ranges must not overlap.");
       }
@@ -191,7 +262,11 @@ function markGridCellOccupied(
   colSpan: number,
 ): void {
   for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
-    for (let column = columnOffset; column < columnOffset + colSpan; column += 1) {
+    for (
+      let column = columnOffset;
+      column < columnOffset + colSpan;
+      column += 1
+    ) {
       occupied.add(occupancyKey(row, column));
     }
   }
@@ -208,13 +283,16 @@ function compileTableBlock(
   builder: RenderPlanBuilder,
 ): void {
   if (!Array.isArray(block.data)) {
-    throw new ReportEngineError("Table async iterable data is not supported until streaming renderer phase 15.");
+    throw new ReportEngineError(
+      "Table async iterable data is not supported until streaming renderer phase 15.",
+    );
   }
 
   const variables = createBlockVariableScope(context, block);
   const headerDepth = calculateHeaderDepth(block.columns);
   const headerCells = buildHeaderMatrix(block.columns, headerDepth);
   const leafColumns = flattenLeafColumns(block.columns);
+  const tableColumnKeyMap = createTableColumnKeyMap(leafColumns);
 
   for (const headerCell of headerCells) {
     builder.addCell(context.sheet.id, {
@@ -229,7 +307,8 @@ function compileTableBlock(
         startRow: cursor.row + headerCell.rowOffset,
         startColumn: cursor.column + headerCell.columnOffset,
         endRow: cursor.row + headerCell.rowOffset + headerCell.rowSpan - 1,
-        endColumn: cursor.column + headerCell.columnOffset + headerCell.colSpan - 1,
+        endColumn:
+          cursor.column + headerCell.columnOffset + headerCell.colSpan - 1,
       });
     }
   }
@@ -245,6 +324,11 @@ function compileTableBlock(
 
   for (const [rowOffset, rowData] of block.data.entries()) {
     const absoluteRow = cursor.row + headerDepth + rowOffset;
+    const formulaContext = createTableRowFormulaContext(
+      tableColumnKeyMap,
+      absoluteRow,
+      cursor.column,
+    );
 
     for (const [columnOffset, column] of leafColumns.entries()) {
       const value = resolveTableCellValue(rowData, column);
@@ -253,7 +337,10 @@ function compileTableBlock(
       builder.addCell(context.sheet.id, {
         row: absoluteRow,
         column: cursor.column + columnOffset,
-        value: interpolateCellValue(value, variables),
+        ...compileCellContent(
+          interpolateCellValue(value, variables),
+          formulaContext,
+        ),
         style: column.style ?? block.bodyStyle,
       });
     }
@@ -262,7 +349,88 @@ function compileTableBlock(
   cursor.advanceRows(block.data.length + headerDepth);
 }
 
-function createBlockVariableScope(context: SheetContext, block: Block): VariableScope {
+function createTableColumnKeyMap(
+  columns: TableLeafColumn[],
+): Map<string, number> {
+  const keyMap = new Map<string, number>();
+
+  for (const [columnOffset, column] of columns.entries()) {
+    if (!column.key) {
+      continue;
+    }
+
+    if (keyMap.has(column.key)) {
+      throw new ReportEngineError(`Duplicate formula cell key "${column.key}".`);
+    }
+
+    keyMap.set(column.key, columnOffset);
+  }
+
+  return keyMap;
+}
+
+function createTableRowFormulaContext(
+  columnKeyMap: Map<string, number>,
+  row: number,
+  firstColumn: number,
+): FormulaCompileContext {
+  return {
+    resolveCellKey(key: string): string {
+      const columnOffset = columnKeyMap.get(key);
+
+      if (columnOffset === undefined) {
+        throw new ReportEngineError(`Formula references unknown cell key "${key}".`);
+      }
+
+      return formatCellAddress({
+        row,
+        column: firstColumn + columnOffset,
+      });
+    },
+    resolveRangeKeys(startKey: string, endKey: string): string {
+      const startColumnOffset = columnKeyMap.get(startKey);
+      const endColumnOffset = columnKeyMap.get(endKey);
+
+      if (startColumnOffset === undefined) {
+        throw new ReportEngineError(
+          `Formula references unknown range start key "${startKey}".`,
+        );
+      }
+
+      if (endColumnOffset === undefined) {
+        throw new ReportEngineError(
+          `Formula references unknown range end key "${endKey}".`,
+        );
+      }
+
+      if (endColumnOffset < startColumnOffset) {
+        throw new ReportEngineError("Formula range end key must resolve after start key.");
+      }
+
+      return [
+        formatCellAddress({ row, column: firstColumn + startColumnOffset }),
+        formatCellAddress({ row, column: firstColumn + endColumnOffset }),
+      ].join(":");
+    },
+  };
+}
+
+function registerCellKey(
+  keyMap: Map<string, CellAddress>,
+  key: string,
+  address: CellAddress,
+): void {
+  if (keyMap.has(key)) {
+    throw new ReportEngineError(`Duplicate formula cell key "${key}".`);
+  }
+
+  keyMap.set(key, address);
+}
+
+function createBlockVariableScope(
+  context: SheetContext,
+  block: Block,
+): VariableScope {
   return {
     workbook: context.variables.workbook,
     sheet: context.variables.sheet,
@@ -282,18 +450,21 @@ function resolveTableCellValue(
   return value === undefined ? null : value;
 }
 
-function assertTableCellValue(value: unknown): asserts value is CellValue {
+function assertTableCellValue(value: unknown): asserts value is CellContent {
   if (
     value === null ||
     typeof value === "string" ||
     typeof value === "number" ||
     typeof value === "boolean" ||
-    value instanceof Date
+    value instanceof Date ||
+    isFormulaDefinition(value)
   ) {
     return;
   }
 
-  throw new ReportEngineError("Table cell values must resolve to a supported cell value.");
+  throw new ReportEngineError(
+    "Table cell values must resolve to a supported cell value.",
+  );
 }
 
 interface HeaderMatrixCell {
@@ -308,13 +479,15 @@ type TableColumnNode = Extract<Block, { type: "table" }>["columns"][number];
 type TableLeafColumn = TableColumnNode & { children?: undefined };
 
 function calculateHeaderDepth(columns: TableColumnNode[]): number {
-  return Math.max(...columns.map((column) => {
-    if (column.children && column.children.length > 0) {
-      return 1 + calculateHeaderDepth(column.children);
-    }
+  return Math.max(
+    ...columns.map((column) => {
+      if (column.children && column.children.length > 0) {
+        return 1 + calculateHeaderDepth(column.children);
+      }
 
-    return 1;
-  }));
+      return 1;
+    }),
+  );
 }
 
 function flattenLeafColumns(columns: TableColumnNode[]): TableLeafColumn[] {
@@ -335,7 +508,13 @@ function buildHeaderMatrix(
   let columnOffset = 0;
 
   for (const column of columns) {
-    columnOffset += appendHeaderCell(cells, column, 0, columnOffset, headerDepth);
+    columnOffset += appendHeaderCell(
+      cells,
+      column,
+      0,
+      columnOffset,
+      headerDepth,
+    );
   }
 
   return cells;

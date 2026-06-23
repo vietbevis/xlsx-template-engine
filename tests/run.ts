@@ -8,6 +8,7 @@ import { runTableBlockTest } from "./table-block.test";
 import { runHeaderTreeTest } from "./header-tree.test";
 import { runMergeEngineTest } from "./merge-engine.test";
 import { runVariableEngineTest } from "./variable-engine.test";
+import { runFormulaEngineTest } from "./formula-engine.test";
 
 void (async () => {
   await runStyleRegistryTest();
@@ -17,6 +18,7 @@ void (async () => {
   await runHeaderTreeTest();
   await runMergeEngineTest();
   await runVariableEngineTest();
+  await runFormulaEngineTest();
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

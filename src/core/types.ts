@@ -1,5 +1,88 @@
 export type CellValue = string | number | boolean | Date | null;
 
+export type CellContent = CellValue | FormulaDefinition;
+
+export type FormulaDefinition =
+  | RawFormulaDefinition
+  | LiteralFormulaDefinition
+  | SumFormulaDefinition
+  | RoundFormulaDefinition
+  | IfFormulaDefinition
+  | CallFormulaDefinition
+  | BinaryFormulaDefinition
+  | RangeFormulaDefinition
+  | RefFormulaDefinition;
+
+export interface RawFormulaDefinition {
+  type: "raw";
+  expression: string;
+}
+
+export interface LiteralFormulaDefinition {
+  type: "literal";
+  value: string | number | boolean | null;
+}
+
+export interface SumFormulaDefinition {
+  type: "sum";
+  range?: FormulaRangeReference;
+  values?: FormulaDefinition[];
+}
+
+export interface RoundFormulaDefinition {
+  type: "round";
+  value: FormulaDefinition;
+  digits: number;
+}
+
+export interface IfFormulaDefinition {
+  type: "if";
+  condition: FormulaDefinition;
+  whenTrue: FormulaDefinition;
+  whenFalse: FormulaDefinition;
+}
+
+export interface CallFormulaDefinition {
+  type: "call";
+  name: string;
+  args: FormulaDefinition[];
+}
+
+export interface BinaryFormulaDefinition {
+  type: "binary";
+  operator: FormulaBinaryOperator;
+  left: FormulaDefinition;
+  right: FormulaDefinition;
+}
+
+export interface RefFormulaDefinition {
+  type: "ref";
+  key: string;
+}
+
+export interface RangeFormulaDefinition {
+  type: "range";
+  startKey: string;
+  endKey: string;
+}
+
+export interface FormulaRangeReference {
+  startKey: string;
+  endKey: string;
+}
+
+export type FormulaBinaryOperator =
+  | "+"
+  | "-"
+  | "*"
+  | "/"
+  | ">"
+  | ">="
+  | "<"
+  | "<="
+  | "="
+  | "<>";
+
 export type StyleRegistry = Record<string, CellStyleDefinition>;
 
 export interface StyleReference {
@@ -164,7 +247,8 @@ export interface GridRow {
 }
 
 export interface GridCell extends StyleReference {
-  value?: CellValue;
+  key?: string;
+  value?: CellContent;
   colSpan?: number;
   rowSpan?: number;
   width?: number;
@@ -178,10 +262,12 @@ export interface TableBlock<Row = Record<string, unknown>> extends BaseBlock {
   bodyStyle?: string;
 }
 
-export interface TableColumn<Row = Record<string, unknown>> extends StyleReference {
+export interface TableColumn<
+  Row = Record<string, unknown>,
+> extends StyleReference {
   title: string;
   key?: string;
-  accessor?: (row: Row) => CellValue;
+  accessor?: (row: Row) => CellContent;
   children?: TableColumn<Row>[];
   width?: number;
 }

@@ -55,6 +55,13 @@ export {
   defaultBlockCompilerRegistry,
 } from "./block-compiler";
 export {
+  compileCellContent,
+  compileFormula,
+  createFormulaCompileContext,
+  formatCellAddress,
+  isFormulaDefinition,
+} from "./formula-engine";
+export {
   assertMergeDoesNotOverlap,
   normalizeMergeRange,
 } from "./merge-engine";
@@ -72,6 +79,10 @@ export type {
 export type {
   MergeRange,
 } from "./merge-engine";
+export type {
+  CellAddress,
+  FormulaCompileContext,
+} from "./formula-engine";
 export type {
   RenderContext,
   VariableScope,
