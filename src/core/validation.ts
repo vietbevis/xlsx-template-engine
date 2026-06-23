@@ -152,10 +152,68 @@ function validateBlock(
       validateGridBlock(block, sheetId, blockIndex, styles);
       return;
     case "table":
+      validateTableBlock(block, sheetId, blockIndex, styles);
       return;
     default:
       throw new ReportEngineError(`Unknown block type "${blockType}" in sheet "${sheetId}".`);
   }
+}
+
+function validateTableBlock(
+  block: Record<string, unknown>,
+  sheetId: string,
+  blockIndex: number,
+  styles: WorkbookDefinition["styles"],
+): void {
+  const label = `Block ${blockIndex} in sheet "${sheetId}" table`;
+
+  if (!Array.isArray(block.columns) || block.columns.length === 0) {
+    throw new ReportEngineError(`${label} columns must be a non-empty array.`);
+  }
+
+  if (!Array.isArray(block.data) && !isAsyncIterable(block.data)) {
+    throw new ReportEngineError(`${label} data must be an array or async iterable.`);
+  }
+
+  validateStyleReference(block.headerStyle, styles, `${label} headerStyle`);
+  validateStyleReference(block.bodyStyle, styles, `${label} bodyStyle`);
+
+  for (const [columnIndex, column] of block.columns.entries()) {
+    validateTableColumn(column, sheetId, blockIndex, columnIndex, styles);
+  }
+}
+
+function validateTableColumn(
+  column: unknown,
+  sheetId: string,
+  blockIndex: number,
+  columnIndex: number,
+  styles: WorkbookDefinition["styles"],
+): void {
+  const label = `Table column ${columnIndex} in block ${blockIndex} of sheet "${sheetId}"`;
+
+  if (!isPlainObject(column)) {
+    throw new ReportEngineError(`${label} must be an object.`);
+  }
+
+  if (typeof column.title !== "string" || column.title.trim() === "") {
+    throw new ReportEngineError(`${label} title must be a non-empty string.`);
+  }
+
+  if (column.key !== undefined && (typeof column.key !== "string" || column.key.trim() === "")) {
+    throw new ReportEngineError(`${label} key must be a non-empty string.`);
+  }
+
+  if (column.accessor !== undefined && typeof column.accessor !== "function") {
+    throw new ReportEngineError(`${label} accessor must be a function.`);
+  }
+
+  if (column.key === undefined && column.accessor === undefined) {
+    throw new ReportEngineError(`${label} must include a key or accessor.`);
+  }
+
+  validatePositiveNumber(column.width, `${label} width`);
+  validateStyleReference(column.style, styles, label);
 }
 
 function validateGridBlock(
@@ -409,4 +467,12 @@ function validateSheetName(sheetName: string, sheetId: string): void {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    Symbol.asyncIterator in value
+  );
 }

@@ -127,7 +127,7 @@ export type Block =
   | TextBlock
   | SpacerBlock
   | GridBlock
-  | TableBlock;
+  | TableBlock<any>;
 
 export interface BaseBlock {
   type: string;
@@ -167,6 +167,17 @@ export interface GridCell extends StyleReference {
   width?: number;
 }
 
-export interface TableBlock extends BaseBlock {
+export interface TableBlock<Row = Record<string, unknown>> extends BaseBlock {
   type: "table";
+  columns: TableColumn<Row>[];
+  data: Row[] | AsyncIterable<Row>;
+  headerStyle?: string;
+  bodyStyle?: string;
+}
+
+export interface TableColumn<Row = Record<string, unknown>> extends StyleReference {
+  title: string;
+  key?: string;
+  accessor?: (row: Row) => CellValue;
+  width?: number;
 }

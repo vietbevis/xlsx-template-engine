@@ -101,19 +101,3 @@ assert.throws(
     }),
   /Unknown block type "unknown"/,
 );
-
-assert.throws(
-  () =>
-    compileWorkbookToRenderPlan({
-      sheets: [
-        {
-          id: "summary",
-          name: "Summary",
-          blocks: [{ type: "table" }],
-        },
-      ],
-    }),
-  (error) =>
-    error instanceof ReportEngineError &&
-    error.message.includes('Block type "table" is not supported'),
-);

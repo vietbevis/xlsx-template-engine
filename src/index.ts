@@ -35,6 +35,7 @@ export type {
   StyleReference,
   StyleRegistry,
   TableBlock,
+  TableColumn,
   TextBlock,
   TitleBlock,
   VerticalAlignmentStyle,
