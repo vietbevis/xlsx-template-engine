@@ -711,6 +711,7 @@ function validateFormulaDefinition(
       validateFormulaRangeReference(value, `${label} range formula`);
       return;
     case "ref":
+      validateOptionalKey(value.sheetId, `${label} ref formula sheetId`);
       validateRequiredKey(value.key, `${label} ref formula key`);
       return;
     default:
@@ -730,6 +731,7 @@ function validateFormulaRangeReference(
   value: Record<string, unknown>,
   label: string,
 ): void {
+  validateOptionalKey(value.sheetId, `${label} sheetId`);
   validateRequiredKey(value.startKey, `${label} startKey`);
   validateRequiredKey(value.endKey, `${label} endKey`);
 }

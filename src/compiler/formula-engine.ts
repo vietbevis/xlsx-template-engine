@@ -8,8 +8,8 @@ import type {
 import type { RenderCell } from "./render-plan";
 
 export interface FormulaCompileContext {
-  resolveCellKey(key: string): string;
-  resolveRangeKeys(startKey: string, endKey: string): string;
+  resolveCellKey(key: string, sheetId?: string): string;
+  resolveRangeKeys(startKey: string, endKey: string, sheetId?: string): string;
 }
 
 export function compileCellContent(
@@ -37,9 +37,9 @@ export function compileFormula(
     case "literal":
       return compileLiteralFormula(formula.value);
     case "ref":
-      return requireCompileContext(context).resolveCellKey(formula.key);
+      return requireCompileContext(context).resolveCellKey(formula.key, formula.sheetId);
     case "range":
-      return requireCompileContext(context).resolveRangeKeys(formula.startKey, formula.endKey);
+      return requireCompileContext(context).resolveRangeKeys(formula.startKey, formula.endKey, formula.sheetId);
     case "sum":
       return `SUM(${compileSumArguments(formula.range, formula.values, context)})`;
     case "round":
@@ -83,20 +83,23 @@ export function isFormulaDefinition(value: unknown): value is FormulaDefinition 
 
 export function createFormulaCompileContext(
   keyMap: Map<string, CellAddress>,
+  options: FormulaCompileContextOptions = {},
 ): FormulaCompileContext {
   return {
-    resolveCellKey(key: string): string {
-      const address = keyMap.get(key);
+    resolveCellKey(key: string, sheetId?: string): string {
+      const targetSheetId = sheetId ?? options.currentSheetId;
+      const address = keyMap.get(createFormulaKey(targetSheetId, key));
 
       if (!address) {
         throw new ReportEngineError(`Formula references unknown cell key "${key}".`);
       }
 
-      return formatCellAddress(address);
+      return formatCellReference(address, options.currentSheetId);
     },
-    resolveRangeKeys(startKey: string, endKey: string): string {
-      const start = keyMap.get(startKey);
-      const end = keyMap.get(endKey);
+    resolveRangeKeys(startKey: string, endKey: string, sheetId?: string): string {
+      const targetSheetId = sheetId ?? options.currentSheetId;
+      const start = keyMap.get(createFormulaKey(targetSheetId, startKey));
+      const end = keyMap.get(createFormulaKey(targetSheetId, endKey));
 
       if (!start) {
         throw new ReportEngineError(`Formula references unknown range start key "${startKey}".`);
@@ -110,14 +113,20 @@ export function createFormulaCompileContext(
         throw new ReportEngineError("Formula range end key must resolve after start key.");
       }
 
-      return `${formatCellAddress(start)}:${formatCellAddress(end)}`;
+      return `${formatCellReference(start, options.currentSheetId)}:${formatCellReference(end, options.currentSheetId)}`;
     },
   };
+}
+
+export interface FormulaCompileContextOptions {
+  currentSheetId?: string;
 }
 
 export interface CellAddress {
   row: number;
   column: number;
+  sheetId?: string;
+  sheetName?: string;
 }
 
 export function formatCellAddress(address: CellAddress): string {
@@ -127,13 +136,30 @@ export function formatCellAddress(address: CellAddress): string {
   return `${columnNumberToName(address.column)}${address.row}`;
 }
 
+export function formatCellReference(
+  address: CellAddress,
+  currentSheetId?: string,
+): string {
+  const localAddress = formatCellAddress(address);
+
+  if (!address.sheetId || address.sheetId === currentSheetId) {
+    return localAddress;
+  }
+
+  if (!address.sheetName) {
+    throw new ReportEngineError(`Formula reference for sheet "${address.sheetId}" is missing sheet name.`);
+  }
+
+  return `${quoteSheetName(address.sheetName)}!${localAddress}`;
+}
+
 function compileSumArguments(
   range: FormulaRangeReference | undefined,
   values: FormulaDefinition[] | undefined,
   context: FormulaCompileContext | undefined,
 ): string {
   const args = [
-    ...(range ? [requireCompileContext(context).resolveRangeKeys(range.startKey, range.endKey)] : []),
+    ...(range ? [requireCompileContext(context).resolveRangeKeys(range.startKey, range.endKey, range.sheetId)] : []),
     ...(values ? values.map((value) => compileFormula(value, context)) : []),
   ];
 
@@ -142,6 +168,14 @@ function compileSumArguments(
   }
 
   return args.join(",");
+}
+
+export function createFormulaKey(sheetId: string | undefined, key: string): string {
+  return sheetId ? `${sheetId}:${key}` : key;
+}
+
+function quoteSheetName(sheetName: string): string {
+  return `'${sheetName.replace(/'/g, "''")}'`;
 }
 
 function compileRawFormula(expression: string): string {

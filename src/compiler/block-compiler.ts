@@ -10,7 +10,9 @@ import type {
 import {
   compileCellContent,
   createFormulaCompileContext,
+  createFormulaKey,
   formatCellAddress,
+  formatCellReference,
   isFormulaDefinition,
   type CellAddress,
   type FormulaCompileContext,
@@ -28,6 +30,7 @@ export interface SheetContext {
   sheet: SheetDefinition;
   styles?: StyleRegistry;
   variables: VariableScope;
+  formulaKeys?: Map<string, CellAddress>;
 }
 
 export type BlockCompiler<TBlock extends Block = Block> = (
@@ -171,7 +174,8 @@ function compileGridBlock(
   }
 
   const formulaContext = createFormulaCompileContext(
-    createGridCellKeyMap(placements),
+    context.formulaKeys ?? createGridCellKeyMap(placements, context.sheet),
+    { currentSheetId: context.sheet.id },
   );
 
   for (const placement of placements) {
@@ -217,6 +221,7 @@ interface GridCellPlacement {
 
 function createGridCellKeyMap(
   placements: GridCellPlacement[],
+  sheet: SheetDefinition,
 ): Map<string, CellAddress> {
   const keyMap = new Map<string, CellAddress>();
 
@@ -225,9 +230,11 @@ function createGridCellKeyMap(
       continue;
     }
 
-    registerCellKey(keyMap, placement.cell.key, {
+    registerCellKey(keyMap, createFormulaKey(sheet.id, placement.cell.key), {
       row: placement.row,
       column: placement.column,
+      sheetId: sheet.id,
+      sheetName: sheet.name,
     });
   }
 
@@ -328,6 +335,7 @@ function compileTableBlock(
       tableColumnKeyMap,
       absoluteRow,
       cursor.column,
+      context,
     );
 
     for (const [columnOffset, column] of leafColumns.entries()) {
@@ -373,9 +381,20 @@ function createTableRowFormulaContext(
   columnKeyMap: Map<string, number>,
   row: number,
   firstColumn: number,
+  context: SheetContext,
 ): FormulaCompileContext {
   return {
-    resolveCellKey(key: string): string {
+    resolveCellKey(key: string, sheetId?: string): string {
+      if (sheetId && sheetId !== context.sheet.id) {
+        const address = context.formulaKeys?.get(createFormulaKey(sheetId, key));
+
+        if (!address) {
+          throw new ReportEngineError(`Formula references unknown cell key "${key}".`);
+        }
+
+        return formatCellReference(address, context.sheet.id);
+      }
+
       const columnOffset = columnKeyMap.get(key);
 
       if (columnOffset === undefined) {
@@ -387,7 +406,33 @@ function createTableRowFormulaContext(
         column: firstColumn + columnOffset,
       });
     },
-    resolveRangeKeys(startKey: string, endKey: string): string {
+    resolveRangeKeys(startKey: string, endKey: string, sheetId?: string): string {
+      if (sheetId && sheetId !== context.sheet.id) {
+        const start = context.formulaKeys?.get(createFormulaKey(sheetId, startKey));
+        const end = context.formulaKeys?.get(createFormulaKey(sheetId, endKey));
+
+        if (!start) {
+          throw new ReportEngineError(
+            `Formula references unknown range start key "${startKey}".`,
+          );
+        }
+
+        if (!end) {
+          throw new ReportEngineError(
+            `Formula references unknown range end key "${endKey}".`,
+          );
+        }
+
+        if (end.row < start.row || end.column < start.column) {
+          throw new ReportEngineError("Formula range end key must resolve after start key.");
+        }
+
+        return [
+          formatCellReference(start, context.sheet.id),
+          formatCellReference(end, context.sheet.id),
+        ].join(":");
+      }
+
       const startColumnOffset = columnKeyMap.get(startKey);
       const endColumnOffset = columnKeyMap.get(endKey);
 
@@ -417,14 +462,14 @@ function createTableRowFormulaContext(
 
 function registerCellKey(
   keyMap: Map<string, CellAddress>,
-  key: string,
+  registryKey: string,
   address: CellAddress,
 ): void {
-  if (keyMap.has(key)) {
-    throw new ReportEngineError(`Duplicate formula cell key "${key}".`);
+  if (keyMap.has(registryKey)) {
+    throw new ReportEngineError(`Duplicate formula cell key "${registryKey}".`);
   }
 
-  keyMap.set(key, address);
+  keyMap.set(registryKey, address);
 }
 
 function createBlockVariableScope(

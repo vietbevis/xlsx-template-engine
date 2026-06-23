@@ -9,6 +9,7 @@ import { runHeaderTreeTest } from "./header-tree.test";
 import { runMergeEngineTest } from "./merge-engine.test";
 import { runVariableEngineTest } from "./variable-engine.test";
 import { runFormulaEngineTest } from "./formula-engine.test";
+import { runMultiSheetTest } from "./multi-sheet.test";
 
 void (async () => {
   await runStyleRegistryTest();
@@ -19,6 +20,7 @@ void (async () => {
   await runMergeEngineTest();
   await runVariableEngineTest();
   await runFormulaEngineTest();
+  await runMultiSheetTest();
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

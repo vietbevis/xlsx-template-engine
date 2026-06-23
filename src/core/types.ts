@@ -57,16 +57,19 @@ export interface BinaryFormulaDefinition {
 
 export interface RefFormulaDefinition {
   type: "ref";
+  sheetId?: string;
   key: string;
 }
 
 export interface RangeFormulaDefinition {
   type: "range";
+  sheetId?: string;
   startKey: string;
   endKey: string;
 }
 
 export interface FormulaRangeReference {
+  sheetId?: string;
   startKey: string;
   endKey: string;
 }
