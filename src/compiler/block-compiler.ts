@@ -63,8 +63,8 @@ export const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
   spacer(block, _context, cursor) {
     cursor.advanceRows(block.rows ?? 1);
   },
-  grid(block) {
-    throwUnsupportedBlock(block.type);
+  grid(block, context, cursor, builder) {
+    compileGridBlock(block, context, cursor, builder);
   },
   table(block) {
     throwUnsupportedBlock(block.type);
@@ -89,4 +89,102 @@ export function compileBlock(
 
 function throwUnsupportedBlock(blockType: Block["type"]): never {
   throw new ReportEngineError(`Block type "${blockType}" is not supported by the compiler yet.`);
+}
+
+function compileGridBlock(
+  block: Extract<Block, { type: "grid" }>,
+  context: SheetContext,
+  cursor: LayoutCursor,
+  builder: RenderPlanBuilder,
+): void {
+  const occupied = new Set<string>();
+  let rowExtent = block.rows.length;
+
+  for (const [rowOffset, gridRow] of block.rows.entries()) {
+    const absoluteRow = cursor.row + rowOffset;
+
+    if (gridRow.height !== undefined) {
+      builder.setRowHeight(context.sheet.id, {
+        row: absoluteRow,
+        height: gridRow.height,
+      });
+    }
+
+    let columnOffset = 0;
+
+    for (const cell of gridRow.cells) {
+      while (occupied.has(occupancyKey(rowOffset, columnOffset))) {
+        columnOffset += 1;
+      }
+
+      const colSpan = cell.colSpan ?? 1;
+      const rowSpan = cell.rowSpan ?? 1;
+      assertGridCellDoesNotOverlap(occupied, rowOffset, columnOffset, rowSpan, colSpan);
+
+      const absoluteColumn = cursor.column + columnOffset;
+
+      builder.addCell(context.sheet.id, {
+        row: absoluteRow,
+        column: absoluteColumn,
+        value: cell.value,
+        style: cell.style,
+      });
+
+      if (cell.width !== undefined) {
+        builder.setColumnWidth(context.sheet.id, {
+          column: absoluteColumn,
+          width: cell.width,
+        });
+      }
+
+      if (rowSpan > 1 || colSpan > 1) {
+        builder.addMerge(context.sheet.id, {
+          startRow: absoluteRow,
+          startColumn: absoluteColumn,
+          endRow: absoluteRow + rowSpan - 1,
+          endColumn: absoluteColumn + colSpan - 1,
+        });
+      }
+
+      markGridCellOccupied(occupied, rowOffset, columnOffset, rowSpan, colSpan);
+      rowExtent = Math.max(rowExtent, rowOffset + rowSpan);
+      columnOffset += colSpan;
+    }
+  }
+
+  cursor.advanceRows(rowExtent);
+}
+
+function assertGridCellDoesNotOverlap(
+  occupied: Set<string>,
+  rowOffset: number,
+  columnOffset: number,
+  rowSpan: number,
+  colSpan: number,
+): void {
+  for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
+    for (let column = columnOffset; column < columnOffset + colSpan; column += 1) {
+      if (occupied.has(occupancyKey(row, column))) {
+        throw new ReportEngineError("Grid cell merge ranges must not overlap.");
+      }
+    }
+  }
+}
+
+function markGridCellOccupied(
+  occupied: Set<string>,
+  rowOffset: number,
+  columnOffset: number,
+  rowSpan: number,
+  colSpan: number,
+): void {
+  for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
+    for (let column = columnOffset; column < columnOffset + colSpan; column += 1) {
+      occupied.add(occupancyKey(row, column));
+    }
+  }
+}
+
+function occupancyKey(rowOffset: number, columnOffset: number): string {
+  return `${rowOffset}:${columnOffset}`;
 }

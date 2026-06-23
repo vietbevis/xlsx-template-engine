@@ -27,6 +27,8 @@ export type {
   FillStyleDefinition,
   FontStyleDefinition,
   GridBlock,
+  GridCell,
+  GridRow,
   HorizontalAlignmentStyle,
   SheetDefinition,
   SpacerBlock,

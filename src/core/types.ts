@@ -152,6 +152,19 @@ export interface SpacerBlock extends BaseBlock {
 
 export interface GridBlock extends BaseBlock {
   type: "grid";
+  rows: GridRow[];
+}
+
+export interface GridRow {
+  height?: number;
+  cells: GridCell[];
+}
+
+export interface GridCell extends StyleReference {
+  value?: CellValue;
+  colSpan?: number;
+  rowSpan?: number;
+  width?: number;
 }
 
 export interface TableBlock extends BaseBlock {

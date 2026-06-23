@@ -149,11 +149,64 @@ function validateBlock(
       }
       return;
     case "grid":
+      validateGridBlock(block, sheetId, blockIndex, styles);
+      return;
     case "table":
       return;
     default:
       throw new ReportEngineError(`Unknown block type "${blockType}" in sheet "${sheetId}".`);
   }
+}
+
+function validateGridBlock(
+  block: Record<string, unknown>,
+  sheetId: string,
+  blockIndex: number,
+  styles: WorkbookDefinition["styles"],
+): void {
+  if (!Array.isArray(block.rows)) {
+    throw new ReportEngineError(`Block ${blockIndex} in sheet "${sheetId}" grid rows must be an array.`);
+  }
+
+  for (const [rowIndex, row] of block.rows.entries()) {
+    if (!isPlainObject(row)) {
+      throw new ReportEngineError(`Grid row ${rowIndex} in block ${blockIndex} of sheet "${sheetId}" must be an object.`);
+    }
+
+    validateBlockHeight(row.height, `Grid row ${rowIndex} in block ${blockIndex} of sheet "${sheetId}" height`);
+
+    if (!Array.isArray(row.cells)) {
+      throw new ReportEngineError(`Grid row ${rowIndex} in block ${blockIndex} of sheet "${sheetId}" cells must be an array.`);
+    }
+
+    for (const [cellIndex, cell] of row.cells.entries()) {
+      validateGridCell(cell, sheetId, blockIndex, rowIndex, cellIndex, styles);
+    }
+  }
+}
+
+function validateGridCell(
+  cell: unknown,
+  sheetId: string,
+  blockIndex: number,
+  rowIndex: number,
+  cellIndex: number,
+  styles: WorkbookDefinition["styles"],
+): void {
+  const label = `Grid cell ${cellIndex} in row ${rowIndex} of block ${blockIndex} in sheet "${sheetId}"`;
+
+  if (!isPlainObject(cell)) {
+    throw new ReportEngineError(`${label} must be an object.`);
+  }
+
+  if (cell.value !== undefined) {
+    validateCellValue(cell.value, `${label} value`);
+  }
+
+  validatePositiveInteger(cell.colSpan, `${label} colSpan`);
+  validatePositiveInteger(cell.rowSpan, `${label} rowSpan`);
+  validatePositiveNumber(cell.width, `${label} width`);
+  validateStyleReference(cell.style, styles, label);
 }
 
 function validateStyleRegistry(styles: unknown): void {
@@ -307,6 +360,20 @@ function validateBlockText(value: unknown, label: string): void {
 }
 
 function validateBlockHeight(value: unknown, label: string): void {
+  validatePositiveNumber(value, label);
+}
+
+function validatePositiveInteger(value: unknown, label: string): void {
+  if (value === undefined) {
+    return;
+  }
+
+  if (!Number.isInteger(value) || typeof value !== "number" || value < 1) {
+    throw new ReportEngineError(`${label} must be a positive integer.`);
+  }
+}
+
+function validatePositiveNumber(value: unknown, label: string): void {
   if (value === undefined) {
     return;
   }
@@ -314,6 +381,20 @@ function validateBlockHeight(value: unknown, label: string): void {
   if (typeof value !== "number" || value <= 0) {
     throw new ReportEngineError(`${label} must be greater than 0.`);
   }
+}
+
+function validateCellValue(value: unknown, label: string): void {
+  if (
+    value === null ||
+    typeof value === "string" ||
+    typeof value === "number" ||
+    typeof value === "boolean" ||
+    value instanceof Date
+  ) {
+    return;
+  }
+
+  throw new ReportEngineError(`${label} must be a valid cell value.`);
 }
 
 function validateSheetName(sheetName: string, sheetId: string): void {
