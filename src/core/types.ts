@@ -22,7 +22,38 @@ export interface SheetDefinition {
   blocks: Block[];
 }
 
-export interface Block {
+export type Block =
+  | TitleBlock
+  | TextBlock
+  | SpacerBlock
+  | GridBlock
+  | TableBlock;
+
+export interface BaseBlock {
   type: string;
-  [property: string]: unknown;
+}
+
+export interface TitleBlock extends BaseBlock {
+  type: "title";
+  text: CellValue;
+  style?: string;
+}
+
+export interface TextBlock extends BaseBlock {
+  type: "text";
+  text: CellValue;
+  style?: string;
+}
+
+export interface SpacerBlock extends BaseBlock {
+  type: "spacer";
+  rows?: number;
+}
+
+export interface GridBlock extends BaseBlock {
+  type: "grid";
+}
+
+export interface TableBlock extends BaseBlock {
+  type: "table";
 }

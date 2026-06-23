@@ -18,16 +18,29 @@ export type {
 export type {
   Block,
   CellValue,
+  GridBlock,
   SheetDefinition,
+  SpacerBlock,
   StyleRegistry,
+  TableBlock,
+  TextBlock,
+  TitleBlock,
   WorkbookDefinition,
   WorkbookMetadata,
 } from "./core/types";
 
 export {
+  compileBlock,
   compileWorkbookToRenderPlan,
+  defaultBlockCompilerRegistry,
   LayoutCursor,
   RenderPlanBuilder,
+} from "./compiler";
+
+export type {
+  BlockCompiler,
+  BlockCompilerRegistry,
+  SheetContext,
 } from "./compiler";
 
 export type {

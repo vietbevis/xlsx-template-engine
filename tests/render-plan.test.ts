@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import {
   LayoutCursor,
+  ReportEngineError,
   RenderPlanBuilder,
   compileWorkbookToRenderPlan,
   defineWorkbook,
@@ -48,3 +49,54 @@ cursor.advanceRows(2);
 cursor.advanceColumns(3);
 assert.equal(cursor.row, 3);
 assert.equal(cursor.column, 4);
+
+const blockWorkbook = defineWorkbook({
+  sheets: [
+    {
+      id: "summary",
+      name: "Summary",
+      blocks: [
+        { type: "title", text: "Report Title", style: "title" },
+        { type: "spacer", rows: 2 },
+        { type: "text", text: "After spacer" },
+      ],
+    },
+  ],
+});
+
+const blockPlan = compileWorkbookToRenderPlan(blockWorkbook);
+assert.equal(blockPlan.sheets[0]?.rows[0]?.index, 1);
+assert.equal(blockPlan.sheets[0]?.rows[0]?.cells[0]?.value, "Report Title");
+assert.equal(blockPlan.sheets[0]?.rows[0]?.cells[0]?.style, "title");
+assert.equal(blockPlan.sheets[0]?.rows[1]?.index, 4);
+assert.equal(blockPlan.sheets[0]?.rows[1]?.cells[0]?.value, "After spacer");
+
+assert.throws(
+  () =>
+    defineWorkbook({
+      sheets: [
+        {
+          id: "summary",
+          name: "Summary",
+          blocks: [{ type: "unknown", text: "Nope" } as never],
+        },
+      ],
+    }),
+  /Unknown block type "unknown"/,
+);
+
+assert.throws(
+  () =>
+    compileWorkbookToRenderPlan({
+      sheets: [
+        {
+          id: "summary",
+          name: "Summary",
+          blocks: [{ type: "table" }],
+        },
+      ],
+    }),
+  (error) =>
+    error instanceof ReportEngineError &&
+    error.message.includes('Block type "table" is not supported'),
+);
