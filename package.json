@@ -18,7 +18,7 @@
   "license": "MIT",
   "type": "commonjs",
   "dependencies": {
-    "exceljs": "^3.4.0"
+    "exceljs": "^4.4.0"
   },
   "overrides": {
     "uuid": "^11.1.1"

@@ -10,6 +10,7 @@ import { runMergeEngineTest } from "./merge-engine.test";
 import { runVariableEngineTest } from "./variable-engine.test";
 import { runFormulaEngineTest } from "./formula-engine.test";
 import { runMultiSheetTest } from "./multi-sheet.test";
+import { runStreamingRendererTest } from "./streaming-renderer.test";
 
 void (async () => {
   await runStyleRegistryTest();
@@ -21,6 +22,7 @@ void (async () => {
   await runVariableEngineTest();
   await runFormulaEngineTest();
   await runMultiSheetTest();
+  await runStreamingRendererTest();
 })().catch((error) => {
   console.error(error);
   process.exitCode = 1;

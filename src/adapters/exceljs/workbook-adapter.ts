@@ -11,8 +11,8 @@ import type {
 
 export class ExcelJsWorkbookAdapter {
   async writeFile(renderPlan: RenderPlan, filePath: string): Promise<void> {
-    const workbook = this.createWorkbook(renderPlan);
-    await workbook.xlsx.writeFile(filePath);
+    const workbook = this.createStreamingWorkbook(renderPlan, { filename: filePath });
+    await workbook.commit();
   }
 
   async writeBuffer(renderPlan: RenderPlan): Promise<Buffer> {
@@ -22,8 +22,53 @@ export class ExcelJsWorkbookAdapter {
   }
 
   async writeStream(renderPlan: RenderPlan, stream: Writable): Promise<void> {
-    const workbook = this.createWorkbook(renderPlan);
-    await workbook.xlsx.write(stream);
+    const workbook = this.createStreamingWorkbook(renderPlan, { stream });
+    await workbook.commit();
+  }
+
+  private createStreamingWorkbook(
+    renderPlan: RenderPlan,
+    options: Partial<ExcelJS.stream.xlsx.WorkbookStreamWriterOptions>,
+  ): ExcelJS.stream.xlsx.WorkbookWriter {
+    const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
+      ...options,
+      useStyles: true,
+    });
+
+    if (renderPlan.metadata?.author) workbook.creator = renderPlan.metadata.author;
+
+    for (const sheetPlan of renderPlan.sheets) {
+      const sheet = workbook.addWorksheet(sheetPlan.name);
+
+      for (const columnWidth of sheetPlan.columnWidths) {
+        sheet.getColumn(columnWidth.column).width = columnWidth.width;
+      }
+
+      for (const rowHeight of sheetPlan.rowHeights) {
+        sheet.getRow(rowHeight.row).height = rowHeight.height;
+      }
+
+      for (const merge of sheetPlan.merges) {
+        sheet.mergeCells(
+          merge.startRow,
+          merge.startColumn,
+          merge.endRow,
+          merge.endColumn,
+        );
+      }
+
+      for (const rowPlan of sheetPlan.rows) {
+        const row = sheet.getRow(rowPlan.index);
+
+        for (const cellPlan of rowPlan.cells) {
+          this.applyCellPlan(row.getCell(cellPlan.column), cellPlan, renderPlan);
+        }
+
+        row.commit();
+      }
+    }
+
+    return workbook;
   }
 
   private createWorkbook(renderPlan: RenderPlan): ExcelJS.Workbook {
@@ -46,20 +91,7 @@ export class ExcelJsWorkbookAdapter {
         const row = sheet.getRow(rowPlan.index);
 
         for (const cellPlan of rowPlan.cells) {
-          const cell = row.getCell(cellPlan.column);
-          cell.value = cellPlan.formula
-            ? this.createFormulaValue(cellPlan.formula, cellPlan.value)
-            : (cellPlan.value ?? null);
-
-          if (cellPlan.style) {
-            const style = renderPlan.styles?.[cellPlan.style];
-
-            if (!style) {
-              throw new ReportEngineError(`Render plan references unknown style "${cellPlan.style}".`);
-            }
-
-            cell.style = this.mapCellStyle(style);
-          }
+          this.applyCellPlan(row.getCell(cellPlan.column), cellPlan, renderPlan);
         }
       }
 
@@ -74,6 +106,26 @@ export class ExcelJsWorkbookAdapter {
     }
 
     return workbook;
+  }
+
+  private applyCellPlan(
+    cell: ExcelJS.Cell,
+    cellPlan: RenderPlan["sheets"][number]["rows"][number]["cells"][number],
+    renderPlan: RenderPlan,
+  ): void {
+    cell.value = cellPlan.formula
+      ? this.createFormulaValue(cellPlan.formula, cellPlan.value)
+      : (cellPlan.value ?? null);
+
+    if (cellPlan.style) {
+      const style = renderPlan.styles?.[cellPlan.style];
+
+      if (!style) {
+        throw new ReportEngineError(`Render plan references unknown style "${cellPlan.style}".`);
+      }
+
+      cell.style = this.mapCellStyle(style);
+    }
   }
 
   private createFormulaValue(formula: string, result: unknown): ExcelJS.CellValue {

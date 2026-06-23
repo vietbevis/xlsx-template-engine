@@ -14,28 +14,33 @@ renderWorkbook(workbook, context).writeBuffer()
 
 Policy:
 
-- `writeFile` va `writeStream` uu tien streaming writer.
-- `writeBuffer` co the dung non-streaming path neu ExcelJS streaming khong tra buffer tien loi; docs phai ghi ro gioi han.
+- [x] `writeFile` va `writeStream` uu tien streaming writer.
+- [x] `writeBuffer` co the dung non-streaming path neu ExcelJS streaming khong tra buffer tien loi; docs phai ghi ro gioi han.
 
 ## Data Sources
 
 Support theo thu tu:
 
-- Array.
-- AsyncIterable.
-- Node Stream neu co adapter ro rang.
-- Database cursor thong qua AsyncIterable.
+- [x] Array.
+- [ ] AsyncIterable.
+- [ ] Node Stream neu co adapter ro rang.
+- [ ] Database cursor thong qua AsyncIterable.
 
 ## Streaming Rules
 
-- Row duoc write va commit tuan tu.
-- Khong scan data de tinh width/height.
-- Table compiler khong materialize toan bo AsyncIterable vao memory.
-- RenderPlan cho large table can cho phep lazy row producer thay vi giu tat ca rows.
+- [x] Row duoc write va commit tuan tu trong ExcelJS streaming writer.
+- [x] Khong scan data de tinh width/height.
+- [ ] Table compiler khong materialize toan bo AsyncIterable vao memory.
+- [ ] RenderPlan cho large table can cho phep lazy row producer thay vi giu tat ca rows.
 
 ## Acceptance
 
-- Render duoc 10k va 100k rows bang streaming path.
-- Memory usage khong tang theo kieu giu toan workbook/data trong RAM.
-- Row duoc commit tuan tu.
+- [x] Render duoc 10k va 100k rows bang streaming path.
+- [ ] Memory usage khong tang theo kieu giu toan workbook/data trong RAM.
+- [x] Row duoc commit tuan tu.
 
+## Notes
+
+- Phase nay da doi ExcelJS adapter de `writeFile`/`writeStream` dung `ExcelJS.stream.xlsx.WorkbookWriter`.
+- `writeBuffer` van dung workbook thuong vi streaming writer khong tra buffer tien loi.
+- Compiler hien tai van tao `RenderPlan` day du cho table array va van reject `AsyncIterable`; de dat memory profile end-to-end cho dataset rat lon can them lazy row producer/streaming compiler rieng.
