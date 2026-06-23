@@ -10,7 +10,7 @@ import {
 const workbook = defineWorkbook({
   metadata: { title: "Render Plan" },
   styles: {
-    title: { bold: true },
+    title: { font: { bold: true } },
   },
   sheets: [{ id: "summary", name: "Summary", blocks: [] }],
 });
@@ -51,6 +51,9 @@ assert.equal(cursor.row, 3);
 assert.equal(cursor.column, 4);
 
 const blockWorkbook = defineWorkbook({
+  styles: {
+    title: { font: { bold: true } },
+  },
   sheets: [
     {
       id: "summary",
@@ -70,6 +73,20 @@ assert.equal(blockPlan.sheets[0]?.rows[0]?.cells[0]?.value, "Report Title");
 assert.equal(blockPlan.sheets[0]?.rows[0]?.cells[0]?.style, "title");
 assert.equal(blockPlan.sheets[0]?.rows[1]?.index, 4);
 assert.equal(blockPlan.sheets[0]?.rows[1]?.cells[0]?.value, "After spacer");
+
+assert.throws(
+  () =>
+    defineWorkbook({
+      sheets: [
+        {
+          id: "summary",
+          name: "Summary",
+          blocks: [{ type: "title", text: "Missing style", style: "missing" }],
+        },
+      ],
+    }),
+  /references unknown style "missing"/,
+);
 
 assert.throws(
   () =>

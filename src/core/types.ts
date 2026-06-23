@@ -1,6 +1,106 @@
 export type CellValue = string | number | boolean | Date | null;
 
-export type StyleRegistry = Record<string, unknown>;
+export type StyleRegistry = Record<string, CellStyleDefinition>;
+
+export interface StyleReference {
+  style?: string;
+}
+
+export interface CellStyleDefinition {
+  font?: FontStyleDefinition;
+  fill?: FillStyleDefinition;
+  border?: BorderStyleDefinition;
+  alignment?: AlignmentStyleDefinition;
+  numberFormat?: string;
+}
+
+export interface FontStyleDefinition {
+  name?: string;
+  size?: number;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  color?: ColorStyleDefinition;
+}
+
+export interface FillStyleDefinition {
+  pattern?: FillPatternStyle;
+  foregroundColor?: ColorStyleDefinition;
+  backgroundColor?: ColorStyleDefinition;
+}
+
+export interface BorderStyleDefinition {
+  top?: BorderSideStyleDefinition;
+  right?: BorderSideStyleDefinition;
+  bottom?: BorderSideStyleDefinition;
+  left?: BorderSideStyleDefinition;
+}
+
+export interface BorderSideStyleDefinition {
+  style: BorderLineStyle;
+  color?: ColorStyleDefinition;
+}
+
+export interface AlignmentStyleDefinition {
+  horizontal?: HorizontalAlignmentStyle;
+  vertical?: VerticalAlignmentStyle;
+  wrapText?: boolean;
+}
+
+export interface ColorStyleDefinition {
+  argb: string;
+}
+
+export type FillPatternStyle =
+  | "none"
+  | "solid"
+  | "darkVertical"
+  | "darkHorizontal"
+  | "darkGrid"
+  | "darkTrellis"
+  | "darkDown"
+  | "darkUp"
+  | "lightVertical"
+  | "lightHorizontal"
+  | "lightGrid"
+  | "lightTrellis"
+  | "lightDown"
+  | "lightUp"
+  | "darkGray"
+  | "mediumGray"
+  | "lightGray"
+  | "gray125"
+  | "gray0625";
+
+export type BorderLineStyle =
+  | "thin"
+  | "dotted"
+  | "hair"
+  | "medium"
+  | "double"
+  | "thick"
+  | "dashDot"
+  | "dashDotDot"
+  | "slantDashDot"
+  | "mediumDashed"
+  | "mediumDashDotDot"
+  | "mediumDashDot";
+
+export type HorizontalAlignmentStyle =
+  | "left"
+  | "center"
+  | "right"
+  | "fill"
+  | "justify"
+  | "centerContinuous"
+  | "distributed";
+
+export type VerticalAlignmentStyle =
+  | "top"
+  | "middle"
+  | "bottom"
+  | "distributed"
+  | "justify";
 
 export interface WorkbookMetadata {
   title?: string;
@@ -33,16 +133,14 @@ export interface BaseBlock {
   type: string;
 }
 
-export interface TitleBlock extends BaseBlock {
+export interface TitleBlock extends BaseBlock, StyleReference {
   type: "title";
   text: CellValue;
-  style?: string;
 }
 
-export interface TextBlock extends BaseBlock {
+export interface TextBlock extends BaseBlock, StyleReference {
   type: "text";
   text: CellValue;
-  style?: string;
 }
 
 export interface SpacerBlock extends BaseBlock {
