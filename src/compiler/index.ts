@@ -38,9 +38,16 @@ export {
   compileBlock,
   defaultBlockCompilerRegistry,
 } from "./block-compiler";
+export {
+  assertMergeDoesNotOverlap,
+  normalizeMergeRange,
+} from "./merge-engine";
 
 export type {
   BlockCompiler,
   BlockCompilerRegistry,
   SheetContext,
 } from "./block-compiler";
+export type {
+  MergeRange,
+} from "./merge-engine";

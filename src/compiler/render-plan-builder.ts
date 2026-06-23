@@ -8,9 +8,15 @@ import type {
   RenderPlanSheet,
   RenderRowHeight,
 } from "./render-plan";
+import {
+  assertMergeDoesNotOverlap,
+  normalizeMergeRange,
+  type MergeRange,
+} from "./merge-engine";
 
 export class RenderPlanBuilder {
   private readonly sheets = new Map<string, RenderPlanSheet>();
+  private readonly mergeRanges: MergeRange[] = [];
 
   constructor(
     private readonly metadata?: WorkbookMetadata,
@@ -43,16 +49,21 @@ export class RenderPlanBuilder {
   }
 
   addMerge(sheetId: string, range: RenderMergeRange): void {
-    assertPositiveInteger(range.startRow, "merge start row");
-    assertPositiveInteger(range.startColumn, "merge start column");
-    assertPositiveInteger(range.endRow, "merge end row");
-    assertPositiveInteger(range.endColumn, "merge end column");
+    const sheet = this.getSheet(sheetId);
+    const normalizedRange = normalizeMergeRange(sheetId, range);
 
-    if (range.endRow < range.startRow || range.endColumn < range.startColumn) {
-      throw new ReportEngineError("Merge range end must be greater than or equal to start.");
+    if (!normalizedRange) {
+      return;
     }
 
-    this.getSheet(sheetId).merges.push({ ...range });
+    assertMergeDoesNotOverlap(normalizedRange, this.mergeRanges);
+    this.mergeRanges.push(normalizedRange);
+    sheet.merges.push({
+      startRow: normalizedRange.startRow,
+      startColumn: normalizedRange.startColumn,
+      endRow: normalizedRange.endRow,
+      endColumn: normalizedRange.endColumn,
+    });
   }
 
   setColumnWidth(sheetId: string, width: RenderColumnWidth): void {
