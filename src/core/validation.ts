@@ -179,7 +179,7 @@ function validateTableBlock(
   validateStyleReference(block.bodyStyle, styles, `${label} bodyStyle`);
 
   for (const [columnIndex, column] of block.columns.entries()) {
-    validateTableColumn(column, sheetId, blockIndex, columnIndex, styles);
+    validateTableColumn(column, sheetId, blockIndex, [columnIndex], styles);
   }
 }
 
@@ -187,10 +187,10 @@ function validateTableColumn(
   column: unknown,
   sheetId: string,
   blockIndex: number,
-  columnIndex: number,
+  columnPath: number[],
   styles: WorkbookDefinition["styles"],
 ): void {
-  const label = `Table column ${columnIndex} in block ${blockIndex} of sheet "${sheetId}"`;
+  const label = `Table column ${columnPath.join(".")} in block ${blockIndex} of sheet "${sheetId}"`;
 
   if (!isPlainObject(column)) {
     throw new ReportEngineError(`${label} must be an object.`);
@@ -208,8 +208,22 @@ function validateTableColumn(
     throw new ReportEngineError(`${label} accessor must be a function.`);
   }
 
-  if (column.key === undefined && column.accessor === undefined) {
-    throw new ReportEngineError(`${label} must include a key or accessor.`);
+  const hasChildren = column.children !== undefined;
+
+  if (hasChildren) {
+    if (!Array.isArray(column.children) || column.children.length === 0) {
+      throw new ReportEngineError(`${label} children must be a non-empty array.`);
+    }
+
+    if (column.key !== undefined || column.accessor !== undefined) {
+      throw new ReportEngineError(`${label} with children must not include key or accessor.`);
+    }
+
+    for (const [childIndex, childColumn] of column.children.entries()) {
+      validateTableColumn(childColumn, sheetId, blockIndex, [...columnPath, childIndex], styles);
+    }
+  } else if (column.key === undefined && column.accessor === undefined) {
+    throw new ReportEngineError(`${label} leaf column must include a key or accessor.`);
   }
 
   validatePositiveNumber(column.width, `${label} width`);

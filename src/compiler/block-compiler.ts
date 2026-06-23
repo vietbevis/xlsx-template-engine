@@ -200,28 +200,41 @@ function compileTableBlock(
     throw new ReportEngineError("Table async iterable data is not supported until streaming renderer phase 15.");
   }
 
-  for (const [columnOffset, column] of block.columns.entries()) {
-    const absoluteColumn = cursor.column + columnOffset;
+  const headerDepth = calculateHeaderDepth(block.columns);
+  const headerCells = buildHeaderMatrix(block.columns, headerDepth);
+  const leafColumns = flattenLeafColumns(block.columns);
 
+  for (const headerCell of headerCells) {
     builder.addCell(context.sheet.id, {
-      row: cursor.row,
-      column: absoluteColumn,
-      value: column.title,
+      row: cursor.row + headerCell.rowOffset,
+      column: cursor.column + headerCell.columnOffset,
+      value: headerCell.title,
       style: block.headerStyle,
     });
 
+    if (headerCell.rowSpan > 1 || headerCell.colSpan > 1) {
+      builder.addMerge(context.sheet.id, {
+        startRow: cursor.row + headerCell.rowOffset,
+        startColumn: cursor.column + headerCell.columnOffset,
+        endRow: cursor.row + headerCell.rowOffset + headerCell.rowSpan - 1,
+        endColumn: cursor.column + headerCell.columnOffset + headerCell.colSpan - 1,
+      });
+    }
+  }
+
+  for (const [columnOffset, column] of leafColumns.entries()) {
     if (column.width !== undefined) {
       builder.setColumnWidth(context.sheet.id, {
-        column: absoluteColumn,
+        column: cursor.column + columnOffset,
         width: column.width,
       });
     }
   }
 
   for (const [rowOffset, rowData] of block.data.entries()) {
-    const absoluteRow = cursor.row + rowOffset + 1;
+    const absoluteRow = cursor.row + headerDepth + rowOffset;
 
-    for (const [columnOffset, column] of block.columns.entries()) {
+    for (const [columnOffset, column] of leafColumns.entries()) {
       const value = resolveTableCellValue(rowData, column);
       assertTableCellValue(value);
 
@@ -234,12 +247,12 @@ function compileTableBlock(
     }
   }
 
-  cursor.advanceRows(block.data.length + 1);
+  cursor.advanceRows(block.data.length + headerDepth);
 }
 
 function resolveTableCellValue(
   row: Record<string, unknown>,
-  column: Extract<Block, { type: "table" }>["columns"][number],
+  column: TableLeafColumn,
 ): unknown {
   if (column.accessor) {
     return column.accessor(row);
@@ -261,4 +274,98 @@ function assertTableCellValue(value: unknown): asserts value is CellValue {
   }
 
   throw new ReportEngineError("Table cell values must resolve to a supported cell value.");
+}
+
+interface HeaderMatrixCell {
+  title: string;
+  rowOffset: number;
+  columnOffset: number;
+  rowSpan: number;
+  colSpan: number;
+}
+
+type TableColumnNode = Extract<Block, { type: "table" }>["columns"][number];
+type TableLeafColumn = TableColumnNode & { children?: undefined };
+
+function calculateHeaderDepth(columns: TableColumnNode[]): number {
+  return Math.max(...columns.map((column) => {
+    if (column.children && column.children.length > 0) {
+      return 1 + calculateHeaderDepth(column.children);
+    }
+
+    return 1;
+  }));
+}
+
+function flattenLeafColumns(columns: TableColumnNode[]): TableLeafColumn[] {
+  return columns.flatMap((column) => {
+    if (column.children && column.children.length > 0) {
+      return flattenLeafColumns(column.children);
+    }
+
+    return [column as TableLeafColumn];
+  });
+}
+
+function buildHeaderMatrix(
+  columns: TableColumnNode[],
+  headerDepth: number,
+): HeaderMatrixCell[] {
+  const cells: HeaderMatrixCell[] = [];
+  let columnOffset = 0;
+
+  for (const column of columns) {
+    columnOffset += appendHeaderCell(cells, column, 0, columnOffset, headerDepth);
+  }
+
+  return cells;
+}
+
+function appendHeaderCell(
+  cells: HeaderMatrixCell[],
+  column: TableColumnNode,
+  rowOffset: number,
+  columnOffset: number,
+  headerDepth: number,
+): number {
+  const childColumns = column.children ?? [];
+  const isParent = childColumns.length > 0;
+  const colSpan = isParent ? countLeafColumns(childColumns) : 1;
+  const rowSpan = isParent ? 1 : headerDepth - rowOffset;
+
+  cells.push({
+    title: column.title,
+    rowOffset,
+    columnOffset,
+    rowSpan,
+    colSpan,
+  });
+
+  if (!isParent) {
+    return 1;
+  }
+
+  let childColumnOffset = columnOffset;
+
+  for (const childColumn of childColumns) {
+    childColumnOffset += appendHeaderCell(
+      cells,
+      childColumn,
+      rowOffset + 1,
+      childColumnOffset,
+      headerDepth,
+    );
+  }
+
+  return colSpan;
+}
+
+function countLeafColumns(columns: TableColumnNode[]): number {
+  return columns.reduce((total, column) => {
+    if (column.children && column.children.length > 0) {
+      return total + countLeafColumns(column.children);
+    }
+
+    return total + 1;
+  }, 0);
 }

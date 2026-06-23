@@ -179,5 +179,6 @@ export interface TableColumn<Row = Record<string, unknown>> extends StyleReferen
   title: string;
   key?: string;
   accessor?: (row: Row) => CellValue;
+  children?: TableColumn<Row>[];
   width?: number;
 }
