@@ -1,4 +1,12 @@
-import { defineWorkbook, type TypedFormulaDefinition } from "../src";
+import {
+  defineWorkbook,
+  type FormulaRangeReference,
+  type GridCell,
+  type RefFormulaDefinition,
+  type TableColumn,
+  type TableSectionCell,
+  type TypedFormulaDefinition,
+} from "../src";
 
 const workbook = defineWorkbook({
   sheets: [
@@ -11,14 +19,14 @@ const workbook = defineWorkbook({
           rows: [
             {
               cells: [
-                { key: "label", value: "Grand total" },
+                { id: "label", value: "Grand total" },
                 {
-                  key: "grand_total",
+                  id: "grand_total",
                   value: {
                     type: "sum",
                     values: [
-                      { type: "ref", sheetId: "department", key: "total" },
-                      { type: "ref", sheetId: "appendix", key: "manual_adjustment" },
+                      { type: "ref", sheetId: "department", id: "total" },
+                      { type: "ref", sheetId: "appendix", id: "manual_adjustment" },
                     ],
                   },
                 },
@@ -37,15 +45,15 @@ const workbook = defineWorkbook({
           rows: [
             {
               cells: [
-                { key: "base_hours", value: 30 },
-                { key: "rate", value: 12 },
+                { id: "base_hours", value: 30 },
+                { id: "rate", value: 12 },
                 {
-                  key: "total",
+                  id: "total",
                   value: {
                     type: "binary",
                     operator: "*",
-                    left: { type: "ref", key: "base_hours" },
-                    right: { type: "ref", key: "rate" },
+                    left: { type: "ref", id: "base_hours" },
+                    right: { type: "ref", id: "rate" },
                   },
                 },
               ],
@@ -62,7 +70,7 @@ const workbook = defineWorkbook({
           type: "grid",
           rows: [
             {
-              cells: [{ key: "manual_adjustment", value: 5 }],
+              cells: [{ id: "manual_adjustment", value: 5 }],
             },
           ],
         },
@@ -76,7 +84,7 @@ type Workbook = typeof workbook;
 const validSummaryFormula: TypedFormulaDefinition<Workbook, "summary"> = {
   type: "ref",
   sheetId: "department",
-  key: "total",
+  id: "total",
 };
 
 void validSummaryFormula;
@@ -95,15 +103,15 @@ const readonlyWorkbook = defineWorkbook({
           rows: [
             {
               cells: [
-                { key: "base", value: 10 },
-                { key: "bonus", value: 5 },
+                { id: "base", value: 10 },
+                { id: "bonus", value: 5 },
                 {
-                  key: "total",
+                  id: "total",
                   value: {
                     type: "sum",
                     values: [
-                      { type: "ref", key: "base" },
-                      { type: "ref", key: "bonus" },
+                      { type: "ref", id: "base" },
+                      { type: "ref", id: "bonus" },
                     ],
                   },
                   style: "money",
@@ -119,6 +127,49 @@ const readonlyWorkbook = defineWorkbook({
 
 void readonlyWorkbook;
 
+const deprecatedGridCell: GridCell = {
+  // @ts-expect-error grid cells use id, not key.
+  key: "legacy",
+  value: 1,
+};
+
+const deprecatedRefFormula: RefFormulaDefinition = {
+  type: "ref",
+  // @ts-expect-error ref formulas use id, not key.
+  key: "legacy",
+};
+
+const deprecatedRangeStart: FormulaRangeReference = {
+  // @ts-expect-error formula ranges use startId, not startKey.
+  startKey: "start",
+  endId: "end",
+};
+
+const deprecatedRangeEnd: FormulaRangeReference = {
+  startId: "start",
+  // @ts-expect-error formula ranges use endId, not endKey.
+  endKey: "end",
+};
+
+const deprecatedSectionCell: TableSectionCell = {
+  // @ts-expect-error section cells use columnId, not columnKey.
+  columnKey: "amount",
+  value: 1,
+};
+
+const deprecatedTableColumn: TableColumn<{ amount: number }> = {
+  title: "Amount",
+  // @ts-expect-error table columns use id, not key.
+  key: "amount",
+};
+
+void deprecatedGridCell;
+void deprecatedRefFormula;
+void deprecatedRangeStart;
+void deprecatedRangeEnd;
+void deprecatedSectionCell;
+void deprecatedTableColumn;
+
 defineWorkbook({
   sheets: [
     {
@@ -130,10 +181,10 @@ defineWorkbook({
           rows: [
             {
               cells: [
-                { key: "source", value: 1 },
-                { key: "target", value: { type: "ref", key: "source" } },
+                { id: "source", value: 1 },
+                { id: "target", value: { type: "ref", id: "source" } },
                 // @ts-expect-error local formula keys must exist in the current sheet.
-                { key: "broken", value: { type: "ref", key: "missing" } },
+                { id: "broken", value: { type: "ref", id: "missing" } },
               ],
             },
           ],
@@ -155,12 +206,12 @@ defineWorkbook({
             {
               cells: [
                 {
-                  key: "grand_total",
+                  id: "grand_total",
                   // @ts-expect-error formula sheetId must be one of the declared sheet ids.
                   value: {
                     type: "sum",
                     values: [
-                      { type: "ref", sheetId: "missing_sheet", key: "total" },
+                      { type: "ref", sheetId: "missing_sheet", id: "total" },
                     ],
                   },
                 },
@@ -178,7 +229,7 @@ defineWorkbook({
           type: "grid",
           rows: [
             {
-              cells: [{ key: "total", value: 360 }],
+              cells: [{ id: "total", value: 360 }],
             },
           ],
         },
@@ -199,12 +250,12 @@ defineWorkbook({
             {
               cells: [
                 {
-                  key: "grand_total",
-                  // @ts-expect-error formula key must exist in the selected sheet.
+                  id: "grand_total",
+                  // @ts-expect-error formula id must exist in the selected sheet.
                   value: {
                     type: "sum",
                     values: [
-                      { type: "ref", sheetId: "department", key: "missing_total" },
+                      { type: "ref", sheetId: "department", id: "missing_total" },
                     ],
                   },
                 },
@@ -222,7 +273,7 @@ defineWorkbook({
           type: "grid",
           rows: [
             {
-              cells: [{ key: "total", value: 360 }],
+              cells: [{ id: "total", value: 360 }],
             },
           ],
         },

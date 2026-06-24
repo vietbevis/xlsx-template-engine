@@ -4,11 +4,9 @@ import ExcelJS from "exceljs";
 import {
   compileWorkbookToRenderPlan,
   defineWorkbook,
-  interpolateCellValue,
-  interpolateVariables,
   renderWorkbook,
-  resolvePath,
 } from "../src";
+import { interpolateCellValue, interpolateVariables, resolvePath } from "../src/advanced";
 
 export async function runVariableEngineTest(): Promise<void> {
   assert.equal(resolvePath({ student: { name: "Nguyen Van A" } }, "student.name"), "Nguyen Van A");
@@ -83,8 +81,8 @@ export async function runVariableEngineTest(): Promise<void> {
           {
             type: "table",
             columns: [
-              { title: "{{labels.name}}", key: "name" },
-              { title: "Note", key: "note" },
+              { title: "{{labels.name}}", id: "name" },
+              { title: "Note", id: "note" },
             ],
             data: [
               { name: "Tran Thi B", note: "{{tableNote}}" },

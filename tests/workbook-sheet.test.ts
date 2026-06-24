@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import {
   ReportEngineError,
   compileWorkbookToRenderPlan,
-  createSheetRegistry,
   defineWorkbook,
   isWorkbookDefinition,
 } from "../src";
+import { createSheetRegistry } from "../src/advanced";
 
 assert.throws(
   () => defineWorkbook({ sheets: [] }),

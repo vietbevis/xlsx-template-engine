@@ -20,6 +20,7 @@ interface StyleReference {
 
 - Style token phai ton tai trong `workbook.styles`.
 - Style registry dung truc tiep ExcelJS style shape; renderer gan style vao cell, khong dich alias rieng.
+- Style precedence khi render cell: `defaultStyle < named style < inline style`.
 - Style khong anh huong layout unless co field explicit da duoc engine support.
 - Style errors phai xuat hien truoc khi ghi file.
 

@@ -27,4 +27,4 @@ Ho tro render nhieu sheet trong mot workbook, voi registry noi bo dua tren `shee
 ## Notes
 
 - Phase 13 giu render order theo `workbook.sheets`; dependency graph phase 14 se co collector rieng va chi doi order neu co nhu cau ro.
-- Local formula key registry khong global qua sheet. Cross-sheet formula phase 14 se mo rong bang `sheetId + key`, khong dung sheet name.
+- Local formula id registry khong global qua sheet. Cross-sheet formula phase 14 se mo rong bang `sheetId + id`, khong dung sheet name.

@@ -9,7 +9,7 @@ Ho tro nested columns va compile Header Tree thanh Header Matrix, Column Schema 
 ```ts
 interface TableColumn<Row> {
   title: string;
-  key?: string;
+  id?: keyof Row;
   accessor?: (row: Row) => CellValue;
   children?: TableColumn<Row>[];
   width?: number;
@@ -30,8 +30,8 @@ Header Tree
 
 ## Rules
 
-- Parent column co `children` khong duoc co `key`/`accessor` dung cho data mapping.
-- Leaf column bat buoc co `key` hoac `accessor`.
+- Parent column co `children` khong duoc co `id`/`accessor` dung cho data mapping.
+- Leaf column bat buoc co `id` hoac `accessor`.
 - Engine tu tinh rowSpan/colSpan; user khong khai bao span cho header.
 - Leaf order giu dung thu tu input.
 
@@ -46,5 +46,4 @@ Header Tree
 
 - Nested header nhieu level render dung merge ngang/doc.
 - Column schema leaf order on dinh.
-- Parent co key hoac leaf thieu key/accessor bi reject.
-
+- Parent co id hoac leaf thieu id/accessor bi reject.

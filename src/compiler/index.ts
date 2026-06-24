@@ -9,7 +9,7 @@ import type {
 } from '../core/types';
 import { validateWorkbookDefinition } from '../core/validation';
 import { compileBlock } from './block-compiler';
-import { createFormulaKey, type CellAddress } from './formula-engine';
+import { createFormulaId, type CellAddress } from './formula-engine';
 import { LayoutCursor } from './layout-cursor';
 import type { RenderPlan } from './render-plan';
 import { RenderPlanBuilder } from './render-plan-builder';
@@ -26,13 +26,17 @@ export function compileWorkbookToRenderPlan(
   validateWorkbookDefinition(workbook);
   const sheetRegistry = createSheetRegistry(workbook.sheets);
   collectFormulaDependencies(workbook, sheetRegistry);
-  const formulaKeys = collectWorkbookFormulaKeys(workbook);
+  const formulaIds = collectWorkbookFormulaIds(workbook);
 
   const workbookContext = {
     ...(workbook.context ?? {}),
     ...(options.context ?? {}),
   };
-  const builder = new RenderPlanBuilder(workbook.metadata, workbook.defaultStyle, workbook.styles);
+  const builder = new RenderPlanBuilder({
+    metadata: workbook.metadata,
+    defaultStyle: workbook.defaultStyle,
+    styles: workbook.styles,
+  });
 
   for (const sheet of workbook.sheets) {
     builder.addSheet(sheet.id, sheet.name);
@@ -47,7 +51,7 @@ export function compileWorkbookToRenderPlan(
         workbook: workbookContext,
         sheet: sheet.context,
       },
-      formulaKeys,
+      formulaIds,
     };
     const cursor = new LayoutCursor();
 
@@ -85,8 +89,8 @@ export function collectFormulaDependencies(
   );
 }
 
-function collectWorkbookFormulaKeys(workbook: WorkbookDefinition): Map<string, CellAddress> {
-  const formulaKeys = new Map<string, CellAddress>();
+function collectWorkbookFormulaIds(workbook: WorkbookDefinition): Map<string, CellAddress> {
+  const formulaIds = new Map<string, CellAddress>();
 
   for (const sheet of workbook.sheets) {
     const cursor = new LayoutCursor();
@@ -101,16 +105,16 @@ function collectWorkbookFormulaKeys(workbook: WorkbookDefinition): Map<string, C
           cursor.advanceRows(block.rows ?? 1);
           break;
         case 'grid':
-          cursor.advanceRows(collectGridFormulaKeys(formulaKeys, sheet, block, cursor));
+          cursor.advanceRows(collectGridFormulaIds(formulaIds, sheet, block, cursor));
           break;
         case 'table':
           if (!Array.isArray(block.data)) {
             throw new ReportEngineError(
-              'Table async iterable data is not supported until streaming renderer phase 15.',
+              'AsyncIterable table data is not yet supported. Use an array data source.',
             );
           }
 
-          cursor.advanceRows(collectTableFormulaKeys(formulaKeys, sheet, block, cursor));
+          cursor.advanceRows(collectTableFormulaIds(formulaIds, sheet, block, cursor));
           break;
         default:
           assertNever(block);
@@ -118,11 +122,11 @@ function collectWorkbookFormulaKeys(workbook: WorkbookDefinition): Map<string, C
     }
   }
 
-  return formulaKeys;
+  return formulaIds;
 }
 
-function collectGridFormulaKeys(
-  formulaKeys: Map<string, CellAddress>,
+function collectGridFormulaIds(
+  formulaIds: Map<string, CellAddress>,
   sheet: SheetDefinition,
   block: Extract<Block, { type: 'grid' }>,
   cursor: LayoutCursor,
@@ -143,8 +147,8 @@ function collectGridFormulaKeys(
       const row = cursor.row + rowOffset;
       const column = cursor.column + columnOffset;
 
-      if (cell.key) {
-        registerWorkbookFormulaKey(formulaKeys, sheet, cell.key, row, column);
+      if (cell.id) {
+        registerWorkbookFormulaId(formulaIds, sheet, cell.id, row, column);
       }
 
       markGridOccupied(occupied, rowOffset, columnOffset, rowSpan, colSpan);
@@ -156,20 +160,20 @@ function collectGridFormulaKeys(
   return rowExtent;
 }
 
-function registerWorkbookFormulaKey(
-  formulaKeys: Map<string, CellAddress>,
+function registerWorkbookFormulaId(
+  formulaIds: Map<string, CellAddress>,
   sheet: SheetDefinition,
-  key: string,
+  id: string,
   row: number,
   column: number,
 ): void {
-  const registryKey = createFormulaKey(sheet.id, key);
+  const registryId = createFormulaId(sheet.id, id);
 
-  if (formulaKeys.has(registryKey)) {
-    throw new ReportEngineError(`Duplicate formula cell key "${key}" in sheet "${sheet.id}".`);
+  if (formulaIds.has(registryId)) {
+    throw new ReportEngineError(`Duplicate formula cell id "${id}" in sheet "${sheet.id}".`);
   }
 
-  formulaKeys.set(registryKey, {
+  formulaIds.set(registryId, {
     row,
     column,
     sheetId: sheet.id,
@@ -199,7 +203,7 @@ function collectSheetFormulas(sheet: SheetDefinition): FormulaDefinition[] {
           }
 
           if (!column.accessor) {
-            const value = column.key ? row[column.key] : undefined;
+            const value = column.id ? row[column.id] : undefined;
 
             if (isFormulaObject(value)) {
               formulas.push(value);
@@ -261,33 +265,33 @@ function calculateTableRowExtent(block: Extract<Block, { type: 'table' }>): numb
   return titleRows + headerRows + dataRows;
 }
 
-function collectTableFormulaKeys(
-  formulaKeys: Map<string, CellAddress>,
+function collectTableFormulaIds(
+  formulaIds: Map<string, CellAddress>,
   sheet: SheetDefinition,
   block: Extract<Block, { type: 'table' }>,
   cursor: LayoutCursor,
 ): number {
   const headerDepth = calculateTableHeaderDepth(block.columns);
-  const columnKeyMap = createTableColumnKeyMap(flattenColumns(block.columns));
+  const columnIdMap = createTableColumnIdMap(flattenColumns(block.columns));
   let rowOffset = (block.titleRows?.length ?? 0) + headerDepth;
 
   const data = block.data;
 
   if (!Array.isArray(data)) {
     throw new ReportEngineError(
-      'Table async iterable data is not supported until streaming renderer phase 15.',
+      'AsyncIterable table data is not yet supported. Use an array data source.',
     );
   }
 
   for (const item of data) {
     if (isTableSectionRow(item)) {
-      collectTableSectionFormulaKeys(
-        formulaKeys,
+      collectTableSectionFormulaIds(
+        formulaIds,
         sheet,
         item,
         cursor.row + rowOffset,
         cursor.column,
-        columnKeyMap,
+        columnIdMap,
       );
     }
 
@@ -297,13 +301,13 @@ function collectTableFormulaKeys(
   return rowOffset;
 }
 
-function collectTableSectionFormulaKeys(
-  formulaKeys: Map<string, CellAddress>,
+function collectTableSectionFormulaIds(
+  formulaIds: Map<string, CellAddress>,
   sheet: SheetDefinition,
   sectionRow: TableSectionRow<Record<string, unknown>>,
   row: number,
   firstColumn: number,
-  columnKeyMap: Map<string, number>,
+  columnIdMap: Map<string, number>,
 ): void {
   const occupiedColumns = new Set<number>();
 
@@ -311,13 +315,13 @@ function collectTableSectionFormulaKeys(
     const columnOffset = resolveTableSectionCellColumnOffset(
       cell,
       cellIndex,
-      columnKeyMap,
+      columnIdMap,
       occupiedColumns,
     );
     const colSpan = cell.colSpan === 'remaining' ? 1 : (cell.colSpan ?? 1);
 
-    if (cell.key) {
-      registerWorkbookFormulaKey(formulaKeys, sheet, cell.key, row, firstColumn + columnOffset);
+    if (cell.id) {
+      registerWorkbookFormulaId(formulaIds, sheet, cell.id, row, firstColumn + columnOffset);
     }
 
     for (let offset = columnOffset; offset < columnOffset + colSpan; offset += 1) {
@@ -329,19 +333,19 @@ function collectTableSectionFormulaKeys(
 function resolveTableSectionCellColumnOffset(
   cell: TableSectionRow<Record<string, unknown>>['cells'][number],
   cellIndex: number,
-  columnKeyMap: Map<string, number>,
+  columnIdMap: Map<string, number>,
   occupiedColumns: Set<number>,
 ): number {
   if (cell.column !== undefined) {
     return cell.column - 1;
   }
 
-  if (cell.columnKey !== undefined) {
-    const offset = columnKeyMap.get(cell.columnKey);
+  if (cell.columnId !== undefined) {
+    const offset = columnIdMap.get(cell.columnId);
 
     if (offset === undefined) {
       throw new ReportEngineError(
-        `Table section row references unknown columnKey "${cell.columnKey}".`,
+        `Table section row references unknown columnId "${cell.columnId}".`,
       );
     }
 
@@ -365,22 +369,22 @@ function collectAllTableRows(block: Extract<Block, { type: 'table' }>): Record<s
   return block.data.filter((item) => !isTableSectionRow(item)) as Record<string, unknown>[];
 }
 
-function createTableColumnKeyMap(columns: TableLeafColumn[]): Map<string, number> {
-  const keyMap = new Map<string, number>();
+function createTableColumnIdMap(columns: TableLeafColumn[]): Map<string, number> {
+  const idMap = new Map<string, number>();
 
   for (const [columnOffset, column] of columns.entries()) {
-    if (!column.key) {
+    if (!column.id) {
       continue;
     }
 
-    if (keyMap.has(String(column.key))) {
-      throw new ReportEngineError(`Duplicate formula cell key "${String(column.key)}".`);
+    if (idMap.has(String(column.id))) {
+      throw new ReportEngineError(`Duplicate formula cell id "${String(column.id)}".`);
     }
 
-    keyMap.set(String(column.key), columnOffset);
+    idMap.set(String(column.id), columnOffset);
   }
 
-  return keyMap;
+  return idMap;
 }
 
 function isTableSectionRow(value: unknown): value is TableSectionRow<Record<string, unknown>> {
@@ -492,7 +496,7 @@ export {
   compileCellContent,
   compileFormula,
   createFormulaCompileContext,
-  createFormulaKey,
+  createFormulaId,
   formatCellAddress,
   formatCellReference,
   isFormulaDefinition,
@@ -508,5 +512,5 @@ export type {
   FormulaCompileContext,
   FormulaCompileContextOptions,
 } from './formula-engine';
-export type { MergeRange } from './merge-engine';
+export type { MergeRange, NormalizedMergeRange } from './merge-engine';
 export type { RenderContext, VariableScope } from './variable-engine';

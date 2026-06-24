@@ -4,6 +4,7 @@ import { runGridBlockTest } from './grid-block.test';
 import { runHeaderTreeTest } from './header-tree.test';
 import { runMergeEngineTest } from './merge-engine.test';
 import { runMultiSheetTest } from './multi-sheet.test';
+import './public-api.test';
 import './render-plan.test';
 import { runSectionedTableTest } from './sectioned-table.test';
 import './smoke.test';

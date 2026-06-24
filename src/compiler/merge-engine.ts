@@ -5,7 +5,14 @@ export interface MergeRange extends RenderMergeRange {
   sheetId: string;
 }
 
-export function normalizeMergeRange(sheetId: string, range: RenderMergeRange): MergeRange | null {
+export type NormalizedMergeRange =
+  | { type: 'skip-single-cell' }
+  | { type: 'range'; range: MergeRange };
+
+export function normalizeMergeRange(
+  sheetId: string,
+  range: RenderMergeRange,
+): NormalizedMergeRange {
   assertPositiveInteger(range.startRow, 'merge start row');
   assertPositiveInteger(range.startColumn, 'merge start column');
   assertPositiveInteger(range.endRow, 'merge end row');
@@ -16,15 +23,18 @@ export function normalizeMergeRange(sheetId: string, range: RenderMergeRange): M
   }
 
   if (range.startRow === range.endRow && range.startColumn === range.endColumn) {
-    return null;
+    return { type: 'skip-single-cell' };
   }
 
   return {
-    sheetId,
-    startRow: range.startRow,
-    startColumn: range.startColumn,
-    endRow: range.endRow,
-    endColumn: range.endColumn,
+    type: 'range',
+    range: {
+      sheetId,
+      startRow: range.startRow,
+      startColumn: range.startColumn,
+      endRow: range.endRow,
+      endColumn: range.endColumn,
+    },
   };
 }
 

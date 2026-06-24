@@ -64,33 +64,31 @@ function validateBlock(
   blockIndex: number,
   styles: WorkbookDefinition['styles'],
 ): void {
+  const path = createBlockPath(sheetId, block, blockIndex);
+
   if (!isPlainObject(block)) {
-    throw new ReportEngineError(`Block ${blockIndex} in sheet "${sheetId}" must be an object.`);
+    throw new ReportEngineError(`${path} must be an object.`);
   }
 
   const blockType = block.type;
 
   if (typeof blockType !== 'string' || blockType.trim() === '') {
-    throw new ReportEngineError(
-      `Block ${blockIndex} in sheet "${sheetId}" must include a non-empty type.`,
-    );
+    throw new ReportEngineError(`${path} must include a non-empty type.`);
   }
 
   switch (blockType) {
     case 'title':
-      validateTextBlock(block, `Block ${blockIndex} in sheet "${sheetId}" title`, styles);
+      validateTextBlock(block, path, styles);
       return;
     case 'text':
-      validateTextBlock(block, `Block ${blockIndex} in sheet "${sheetId}" text`, styles);
+      validateTextBlock(block, path, styles);
       return;
     case 'spacer':
       if (block.rows !== undefined) {
         const rows = block.rows;
 
         if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
-          throw new ReportEngineError(
-            `Block ${blockIndex} in sheet "${sheetId}" spacer rows must be a positive integer.`,
-          );
+          throw new ReportEngineError(`${path} rows must be a positive integer.`);
         }
       }
       return;
@@ -111,7 +109,7 @@ function validateTableBlock(
   blockIndex: number,
   styles: WorkbookDefinition['styles'],
 ): void {
-  const label = `Block ${blockIndex} in sheet "${sheetId}" table`;
+  const label = createBlockPath(sheetId, block, blockIndex);
 
   if (!Array.isArray(block.columns) || block.columns.length === 0) {
     throw new ReportEngineError(`${label} columns must be a non-empty array.`);
@@ -215,16 +213,17 @@ function validateTableSectionCell(
   if (!isPlainObject(cell)) {
     throw new ReportEngineError(`${label} must be an object.`);
   }
+  rejectDeprecatedKeyFields(cell, label, ['key', 'columnKey']);
 
   if (cell.column !== undefined) {
     validatePositiveInteger(cell.column, `${label} column`);
   }
 
-  validateOptionalKey(cell.key, `${label} key`);
-  validateOptionalKey(cell.columnKey, `${label} columnKey`);
+  validateOptionalId(cell.id, `${label} id`);
+  validateOptionalKey(cell.columnId, `${label} columnId`);
 
-  if (cell.column !== undefined && cell.columnKey !== undefined) {
-    throw new ReportEngineError(`${label} must not include both column and columnKey.`);
+  if (cell.column !== undefined && cell.columnId !== undefined) {
+    throw new ReportEngineError(`${label} must not include both column and columnId.`);
   }
 
   if (cell.value !== undefined && typeof cell.value !== 'function') {
@@ -254,9 +253,10 @@ function validateTableColumn(
   if (typeof column.title !== 'string' || column.title.trim() === '') {
     throw new ReportEngineError(`${label} title must be a non-empty string.`);
   }
+  rejectDeprecatedKeyFields(column, label, ['key']);
 
-  if (column.key !== undefined && (typeof column.key !== 'string' || column.key.trim() === '')) {
-    throw new ReportEngineError(`${label} key must be a non-empty string.`);
+  if (column.id !== undefined && (typeof column.id !== 'string' || column.id.trim() === '')) {
+    throw new ReportEngineError(`${label} id must be a non-empty string.`);
   }
 
   if (column.accessor !== undefined && typeof column.accessor !== 'function') {
@@ -270,8 +270,8 @@ function validateTableColumn(
       throw new ReportEngineError(`${label} children must be a non-empty array.`);
     }
 
-    if (column.key !== undefined || column.accessor !== undefined) {
-      throw new ReportEngineError(`${label} with children must not include key or accessor.`);
+    if (column.id !== undefined || column.accessor !== undefined) {
+      throw new ReportEngineError(`${label} with children must not include id or accessor.`);
     }
 
     for (const [childIndex, childColumn] of column.children.entries()) {
@@ -279,8 +279,8 @@ function validateTableColumn(
     }
   } else if (column.childrenRowOffset !== undefined) {
     throw new ReportEngineError(`${label} childrenRowOffset requires children.`);
-  } else if (column.key === undefined && column.accessor === undefined) {
-    throw new ReportEngineError(`${label} leaf column must include a key or accessor.`);
+  } else if (column.id === undefined && column.accessor === undefined) {
+    throw new ReportEngineError(`${label} leaf column must include an id or accessor.`);
   }
 
   validatePositiveInteger(column.childrenRowOffset, `${label} childrenRowOffset`);
@@ -324,18 +324,18 @@ function validateGridBlock(
   for (const [rowIndex, row] of block.rows.entries()) {
     if (!isPlainObject(row)) {
       throw new ReportEngineError(
-        `Grid row ${rowIndex} in block ${blockIndex} of sheet "${sheetId}" must be an object.`,
+        `${createGridRowPath(sheetId, blockIndex, rowIndex)} must be an object.`,
       );
     }
 
     validatePositiveNumber(
       row.height,
-      `Grid row ${rowIndex} in block ${blockIndex} of sheet "${sheetId}" height`,
+      `${createGridRowPath(sheetId, blockIndex, rowIndex)} height`,
     );
 
     if (!Array.isArray(row.cells)) {
       throw new ReportEngineError(
-        `Grid row ${rowIndex} in block ${blockIndex} of sheet "${sheetId}" cells must be an array.`,
+        `${createGridRowPath(sheetId, blockIndex, rowIndex)} cells must be an array.`,
       );
     }
 
@@ -353,13 +353,14 @@ function validateGridCell(
   cellIndex: number,
   styles: WorkbookDefinition['styles'],
 ): void {
-  const label = `Grid cell ${cellIndex} in row ${rowIndex} of block ${blockIndex} in sheet "${sheetId}"`;
+  const label = createGridCellPath(sheetId, blockIndex, rowIndex, cellIndex, cell);
 
   if (!isPlainObject(cell)) {
     throw new ReportEngineError(`${label} must be an object.`);
   }
+  rejectDeprecatedKeyFields(cell, label, ['key']);
 
-  validateOptionalKey(cell.key, `${label} key`);
+  validateOptionalId(cell.id, `${label} id`);
 
   if (cell.value !== undefined) {
     validateCellContent(cell.value, `${label} value`);
@@ -572,7 +573,8 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
       return;
     case 'ref':
       validateOptionalKey(value.sheetId, `${label} ref formula sheetId`);
-      validateRequiredKey(value.key, `${label} ref formula key`);
+      rejectDeprecatedKeyFields(value, `${label} ref formula`, ['key']);
+      validateRequiredKey(value.id, `${label} ref formula id`);
       return;
     default:
       throw new ReportEngineError(`${label} formula type is not supported.`);
@@ -588,9 +590,10 @@ function validateNestedFormulaDefinition(value: unknown, label: string): void {
 }
 
 function validateFormulaRangeReference(value: Record<string, unknown>, label: string): void {
+  rejectDeprecatedKeyFields(value, label, ['startKey', 'endKey']);
   validateOptionalKey(value.sheetId, `${label} sheetId`);
-  validateRequiredKey(value.startKey, `${label} startKey`);
-  validateRequiredKey(value.endKey, `${label} endKey`);
+  validateRequiredKey(value.startId, `${label} startId`);
+  validateRequiredKey(value.endId, `${label} endId`);
 
   if (value.scope !== undefined && value.scope !== 'currentRows' && value.scope !== 'allRows') {
     throw new ReportEngineError(`${label} scope must be currentRows or allRows.`);
@@ -609,10 +612,57 @@ function validateOptionalKey(value: unknown, label: string): void {
   validateRequiredKey(value, label);
 }
 
+function validateOptionalId(value: unknown, label: string): void {
+  validateOptionalKey(value, label);
+}
+
 function validateRequiredKey(value: unknown, label: string): void {
   if (typeof value !== 'string' || value.trim() === '') {
     throw new ReportEngineError(`${label} must be a non-empty string.`);
   }
+}
+
+function rejectDeprecatedKeyFields(
+  value: Record<string, unknown>,
+  label: string,
+  fields: readonly string[],
+): void {
+  for (const field of fields) {
+    if (Object.prototype.hasOwnProperty.call(value, field)) {
+      throw new ReportEngineError(`${label} uses deprecated "${field}"; use id-based fields.`);
+    }
+  }
+}
+
+function createBlockPath(sheetId: string, block: unknown, blockIndex: number): string {
+  const type = isPlainObject(block) && typeof block.type === 'string' ? block.type : 'block';
+  return `sheet "${sheetId}" > ${type} block ${blockIndex + 1}`;
+}
+
+function createGridRowPath(sheetId: string, blockIndex: number, rowIndex: number): string {
+  return `sheet "${sheetId}" > grid block ${blockIndex + 1} > row ${rowIndex + 1}`;
+}
+
+function createGridCellPath(
+  sheetId: string,
+  blockIndex: number,
+  rowIndex: number,
+  cellIndex: number,
+  cell: unknown,
+): string {
+  const base = `${createGridRowPath(sheetId, blockIndex, rowIndex)} > cell`;
+
+  if (isPlainObject(cell)) {
+    if (typeof cell.id === 'string' && cell.id.trim() !== '') {
+      return `${base} "${cell.id}"`;
+    }
+
+    if (typeof cell.value === 'string' && cell.value.trim() !== '') {
+      return `${base} "${cell.value}"`;
+    }
+  }
+
+  return `${base} ${cellIndex + 1}`;
 }
 
 function validateSheetName(sheetName: string, sheetId: string): void {

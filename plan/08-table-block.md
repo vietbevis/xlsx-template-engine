@@ -17,7 +17,7 @@ interface TableBlock<Row = Record<string, unknown>> {
 
 interface TableColumn<Row> {
   title: string;
-  key?: string;
+  id?: keyof Row;
   accessor?: (row: Row) => CellValue;
   width?: number;
   style?: string;
@@ -29,15 +29,15 @@ interface TableColumn<Row> {
 - `columns` bat buoc va khong duoc rong.
 - Khong co `autoGenerateColumns`.
 - Extra fields trong data bi ignore.
-- Moi leaf column can `key` hoac `accessor`.
+- Moi leaf column can `id` hoac `accessor`.
 - Array data support truoc; AsyncIterable hoan thien trong phase 15.
 
 ## Implementation Checklist
 
 - Validate table columns.
 - Render header row co style token.
-- Render body rows bang `key` hoac `accessor`.
-- Khong inspect keys cua data de tao column.
+- Render body rows bang `id` hoac `accessor`.
+- Khong inspect ids/fields cua data de tao column.
 - Chuan bi `data` adapter de phase 15 streaming khong phai doi public API.
 
 ## Acceptance
@@ -45,4 +45,3 @@ interface TableColumn<Row> {
 - Table thieu columns bi reject.
 - Extra field trong data khong tao them cot.
 - Header/body render dung theo column order.
-

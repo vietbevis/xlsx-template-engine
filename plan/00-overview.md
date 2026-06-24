@@ -2,7 +2,7 @@
 
 ## Muc tieu
 
-Xay dung mot thu vien TypeScript chay tren server de sinh file Excel theo huong Report Engine hoan chinh, khong phai JSON-to-Excel wrapper. ExcelJS la loi workbook/cell/style cua thu vien; engine chi them report DSL, layout block, semantic key, formula resolver va streaming workflow.
+Xay dung mot thu vien TypeScript chay tren server de sinh file Excel theo huong Report Engine hoan chinh, khong phai JSON-to-Excel wrapper. ExcelJS la loi workbook/cell/style cua thu vien; engine chi them report DSL, layout block, semantic id, formula resolver va streaming workflow.
 
 Engine phai giu cac nguyen tac cot loi:
 

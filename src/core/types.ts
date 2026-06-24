@@ -60,21 +60,21 @@ export interface BinaryFormulaDefinition {
 export interface RefFormulaDefinition {
   type: 'ref';
   sheetId?: string;
-  key: string;
+  id: string;
 }
 
 export interface RangeFormulaDefinition {
   type: 'range';
   sheetId?: string;
-  startKey: string;
-  endKey: string;
+  startId: string;
+  endId: string;
   scope?: FormulaRangeScope;
 }
 
 export interface FormulaRangeReference {
   sheetId?: string;
-  startKey: string;
-  endKey: string;
+  startId: string;
+  endId: string;
   scope?: FormulaRangeScope;
 }
 
@@ -150,7 +150,7 @@ export interface GridRow {
 }
 
 export interface GridCell extends StyleReference {
-  key?: string;
+  id?: string;
   value?: CellContent;
   colSpan?: number;
   rowSpan?: number;
@@ -186,9 +186,9 @@ export interface TableSectionRow<Row = Record<string, unknown>> extends StyleRef
 }
 
 export interface TableSectionCell<Row = Record<string, unknown>> extends StyleReference {
-  key?: string;
+  id?: string;
   column?: number;
-  columnKey?: string;
+  columnId?: string;
   value?: CellContent | TableSectionCellAccessor<Row>;
   colSpan?: number | 'remaining';
 }
@@ -206,7 +206,7 @@ export interface TableSectionCellContext<Row = Record<string, unknown>> {
 
 export interface TableColumn<Row = Record<string, unknown>> extends StyleReference {
   title: string;
-  key?: keyof Row;
+  id?: keyof Row;
   accessor?: (row: Row) => CellContent;
   children?: readonly TableColumn<Row>[];
   childrenRowOffset?: number;
@@ -344,12 +344,12 @@ type TypedRefFormulaDefinition<
   TCurrentSheetId extends string,
   TLocalKeys extends string,
 > =
-  | { type: 'ref'; key: TLocalKeys; sheetId?: undefined }
+  | { type: 'ref'; id: TLocalKeys; sheetId?: undefined }
   | {
       [TSheetId in SheetIds<TWorkbook>]: {
         type: 'ref';
         sheetId: TSheetId;
-        key: SheetGridKeys<TWorkbook, TSheetId>;
+        id: SheetGridKeys<TWorkbook, TSheetId>;
       };
     }[SheetIds<TWorkbook>];
 
@@ -360,8 +360,8 @@ type TypedRangeFormulaDefinition<
 > =
   | {
       type: 'range';
-      startKey: TLocalKeys;
-      endKey: TLocalKeys;
+      startId: TLocalKeys;
+      endId: TLocalKeys;
       scope?: FormulaRangeScope;
       sheetId?: undefined;
     }
@@ -369,8 +369,8 @@ type TypedRangeFormulaDefinition<
       [TSheetId in SheetIds<TWorkbook>]: {
         type: 'range';
         sheetId: TSheetId;
-        startKey: SheetGridKeys<TWorkbook, TSheetId>;
-        endKey: SheetGridKeys<TWorkbook, TSheetId>;
+        startId: SheetGridKeys<TWorkbook, TSheetId>;
+        endId: SheetGridKeys<TWorkbook, TSheetId>;
         scope?: undefined;
       };
     }[SheetIds<TWorkbook>];
@@ -381,16 +381,16 @@ type TypedFormulaRangeReference<
   TLocalKeys extends string,
 > =
   | {
-      startKey: TLocalKeys;
-      endKey: TLocalKeys;
+      startId: TLocalKeys;
+      endId: TLocalKeys;
       scope?: FormulaRangeScope;
       sheetId?: undefined;
     }
   | {
       [TSheetId in SheetIds<TWorkbook>]: {
         sheetId: TSheetId;
-        startKey: SheetGridKeys<TWorkbook, TSheetId>;
-        endKey: SheetGridKeys<TWorkbook, TSheetId>;
+        startId: SheetGridKeys<TWorkbook, TSheetId>;
+        endId: SheetGridKeys<TWorkbook, TSheetId>;
         scope?: undefined;
       };
     }[SheetIds<TWorkbook>];
@@ -472,7 +472,7 @@ type SheetGridKeys<TWorkbook extends WorkbookDefinition, TSheetId extends string
 
 type GridBlockKeys<TBlock extends GridBlock> =
   TBlock['rows'][number]['cells'][number] extends infer TCell
-    ? TCell extends { key: infer TKey }
+    ? TCell extends { id: infer TKey }
       ? Extract<TKey, string>
       : never
     : never;
@@ -484,7 +484,7 @@ type TableColumnKeys<
   ? TColumn extends TableColumn<TRow>
     ? TColumn extends { children: readonly TableColumn<TRow>[] }
       ? TableColumnKeys<TRow, TColumn['children']>
-      : TColumn extends { key: infer TKey }
+      : TColumn extends { id: infer TKey }
         ? Extract<TKey, string>
         : never
     : never

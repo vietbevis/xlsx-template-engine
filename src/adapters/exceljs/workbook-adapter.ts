@@ -8,6 +8,16 @@ interface StyleableWorksheet {
   getCell(row: number, column: number): ExcelJS.Cell;
 }
 
+type CellPlanIndex = Map<number, Map<number, RenderCell>>;
+
+interface StyledMergeCoverage {
+  startRow: number;
+  endRow: number;
+  startColumn: number;
+  endColumn: number;
+  style: CellStyleDefinition;
+}
+
 export class ExcelJsWorkbookAdapter {
   async writeFile(renderPlan: RenderPlan, filePath: string): Promise<void> {
     const workbook = this.createStreamingWorkbook(renderPlan, { filename: filePath });
@@ -38,6 +48,9 @@ export class ExcelJsWorkbookAdapter {
 
     for (const sheetPlan of renderPlan.sheets) {
       const sheet = workbook.addWorksheet(sheetPlan.name);
+      const cellPlanIndex = this.createCellPlanIndex(sheetPlan);
+      const mergeCoverage = this.createStyledMergeCoverage(sheetPlan, renderPlan, cellPlanIndex);
+      const mergeCoverageByRow = this.indexMergeCoverageByRow(mergeCoverage);
 
       for (const columnWidth of sheetPlan.columnWidths) {
         sheet.getColumn(columnWidth.column).width = columnWidth.width;
@@ -58,7 +71,11 @@ export class ExcelJsWorkbookAdapter {
           this.applyCellPlan(row.getCell(cellPlan.column), cellPlan, renderPlan);
         }
 
-        this.applyMergedStyleCoverage(sheet, sheetPlan, renderPlan, rowPlan.index);
+        this.applyMergedStyleCoverage(
+          sheet,
+          mergeCoverageByRow.get(rowPlan.index) ?? [],
+          rowPlan.index,
+        );
 
         row.commit();
       }
@@ -74,6 +91,8 @@ export class ExcelJsWorkbookAdapter {
 
     for (const sheetPlan of renderPlan.sheets) {
       const sheet = workbook.addWorksheet(sheetPlan.name);
+      const cellPlanIndex = this.createCellPlanIndex(sheetPlan);
+      const mergeCoverage = this.createStyledMergeCoverage(sheetPlan, renderPlan, cellPlanIndex);
 
       for (const columnWidth of sheetPlan.columnWidths) {
         sheet.getColumn(columnWidth.column).width = columnWidth.width;
@@ -95,7 +114,7 @@ export class ExcelJsWorkbookAdapter {
         sheet.mergeCells(merge.startRow, merge.startColumn, merge.endRow, merge.endColumn);
       }
 
-      this.applyMergedStyleCoverage(sheet, sheetPlan, renderPlan);
+      this.applyMergedStyleCoverage(sheet, mergeCoverage);
     }
 
     return workbook;
@@ -119,16 +138,46 @@ export class ExcelJsWorkbookAdapter {
 
   private applyMergedStyleCoverage(
     sheet: StyleableWorksheet,
-    sheetPlan: RenderPlanSheet,
-    renderPlan: RenderPlan,
+    mergeCoverage: readonly StyledMergeCoverage[],
     rowIndex?: number,
   ): void {
-    for (const merge of sheetPlan.merges) {
-      if (rowIndex !== undefined && (rowIndex < merge.startRow || rowIndex > merge.endRow)) {
-        continue;
+    for (const merge of mergeCoverage) {
+      const startRow = rowIndex ?? merge.startRow;
+      const endRow = rowIndex ?? merge.endRow;
+
+      for (let row = startRow; row <= endRow; row += 1) {
+        for (let column = merge.startColumn; column <= merge.endColumn; column += 1) {
+          sheet.getCell(row, column).style = cloneStylePart(merge.style) as Partial<ExcelJS.Style>;
+        }
+      }
+    }
+  }
+
+  private createCellPlanIndex(sheetPlan: RenderPlanSheet): CellPlanIndex {
+    const index: CellPlanIndex = new Map();
+
+    for (const row of sheetPlan.rows) {
+      const cellsByColumn = new Map<number, RenderCell>();
+
+      for (const cell of row.cells) {
+        cellsByColumn.set(cell.column, cell);
       }
 
-      const masterCellPlan = this.findCellPlan(sheetPlan, merge.startRow, merge.startColumn);
+      index.set(row.index, cellsByColumn);
+    }
+
+    return index;
+  }
+
+  private createStyledMergeCoverage(
+    sheetPlan: RenderPlanSheet,
+    renderPlan: RenderPlan,
+    cellPlanIndex: CellPlanIndex,
+  ): StyledMergeCoverage[] {
+    const coverage: StyledMergeCoverage[] = [];
+
+    for (const merge of sheetPlan.merges) {
+      const masterCellPlan = cellPlanIndex.get(merge.startRow)?.get(merge.startColumn);
 
       if (!masterCellPlan?.style && !masterCellPlan?.inlineStyle) {
         continue;
@@ -140,25 +189,29 @@ export class ExcelJsWorkbookAdapter {
         continue;
       }
 
-      const startRow = rowIndex ?? merge.startRow;
-      const endRow = rowIndex ?? merge.endRow;
-
-      for (let row = startRow; row <= endRow; row += 1) {
-        for (let column = merge.startColumn; column <= merge.endColumn; column += 1) {
-          sheet.getCell(row, column).style = cloneStylePart(style) as Partial<ExcelJS.Style>;
-        }
-      }
+      coverage.push({
+        ...merge,
+        style,
+      });
     }
+
+    return coverage;
   }
 
-  private findCellPlan(
-    sheetPlan: RenderPlanSheet,
-    rowIndex: number,
-    columnIndex: number,
-  ): RenderCell | undefined {
-    return sheetPlan.rows
-      .find((row) => row.index === rowIndex)
-      ?.cells.find((cell) => cell.column === columnIndex);
+  private indexMergeCoverageByRow(
+    mergeCoverage: readonly StyledMergeCoverage[],
+  ): Map<number, StyledMergeCoverage[]> {
+    const index = new Map<number, StyledMergeCoverage[]>();
+
+    for (const merge of mergeCoverage) {
+      for (let row = merge.startRow; row <= merge.endRow; row += 1) {
+        const rowMerges = index.get(row) ?? [];
+        rowMerges.push(merge);
+        index.set(row, rowMerges);
+      }
+    }
+
+    return index;
   }
 
   private createFormulaValue(formula: string, result: unknown): ExcelJS.CellValue {

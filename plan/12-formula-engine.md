@@ -10,9 +10,9 @@ Tao formula abstraction cua engine, khong yeu cau user truyen truc tiep ExcelJS 
 type FormulaDefinition =
   | { type: "raw"; expression: string }
   | { type: "literal"; value: string | number | boolean | null }
-  | { type: "ref"; key: string }
-  | { type: "range"; startKey: string; endKey: string }
-  | { type: "sum"; range?: { startKey: string; endKey: string }; values?: readonly FormulaDefinition[] }
+  | { type: "ref"; id: string }
+  | { type: "range"; startId: string; endId: string }
+  | { type: "sum"; range?: { startId: string; endId: string }; values?: readonly FormulaDefinition[] }
   | { type: "round"; value: FormulaDefinition; digits: number }
   | { type: "if"; condition: FormulaDefinition; whenTrue: FormulaDefinition; whenFalse: FormulaDefinition }
   | { type: "call"; name: string; args: readonly FormulaDefinition[] }
@@ -21,15 +21,15 @@ type FormulaDefinition =
 
 Phase nay chi can local formula. Cross-sheet ref xu ly o phase 14.
 
-Public formula API khong dung A1/B2, row/column, hoac sheetName. User khai bao key, compiler resolve key thanh dia chi Excel sau khi layout da duoc tinh.
+Public formula API khong dung A1/B2, row/column, hoac sheetName. User khai bao id, compiler resolve id thanh dia chi Excel sau khi layout da duoc tinh.
 
-Grid cell co the khai bao `key`. Table leaf column `key` dong thoi la data accessor va formula key trong tung row.
+Grid cell co the khai bao `id`. Table leaf column `id` dong thoi la data accessor va formula id trong tung row.
 
 ## Formula Context
 
-- Grid: tao key registry theo block, vi grid la layout huu han.
-- Table: tao map `key -> columnOffset` mot lan theo leaf columns; moi row dung lightweight context resolve key theo row hien tai. Khong luu key registry cho tung row, de phase streaming/large dataset khong bi giu hang tram nghin dong trong RAM.
-- Phase 14 se mo rong context bang `sheetId + key`, khong dung sheetName.
+- Grid: tao id registry theo block, vi grid la layout huu han.
+- Table: tao map `id -> columnOffset` mot lan theo leaf columns; moi row dung lightweight context resolve id theo row hien tai. Khong luu id registry cho tung row, de phase streaming/large dataset khong bi giu hang tram nghin dong trong RAM.
+- Phase 14 se mo rong context bang `sheetId + id`, khong dung sheetName.
 
 ## Rules
 
@@ -51,4 +51,4 @@ Grid cell co the khai bao `key`. Table leaf column `key` dong thoi la data acces
 - [x] Formula cell khong bi coi la string thuong.
 - [x] Public API khong lo ExcelJS formula object.
 - [x] Public API khong yeu cau user biet A1/row/column.
-- [x] Nested formula nhu IF/ROUND/SUM compile duoc tu key.
+- [x] Nested formula nhu IF/ROUND/SUM compile duoc tu id.

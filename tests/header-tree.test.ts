@@ -49,11 +49,11 @@ const workbook = defineWorkbook({
           headerRowHeights: [24, 30],
           bodyStyle: 'body',
           columns: [
-            { title: 'Lecturer', key: 'name', width: 24 },
+            { title: 'Lecturer', id: 'name', width: 24 },
             {
               title: 'Teaching',
               children: [
-                { title: 'Hours', key: 'hours', width: 12, style: 'number' },
+                { title: 'Hours', id: 'hours', width: 12, style: 'number' },
                 {
                   title: 'Amount',
                   accessor: (row: LecturerRow) => row.hours * row.rate,
@@ -125,7 +125,7 @@ const complexWorkbook = defineWorkbook({
           headerStyle: 'header',
           bodyStyle: 'body',
           columns: [
-            { title: 'Lecturer', key: 'name', width: 24, style: 'bordered' },
+            { title: 'Lecturer', id: 'name', width: 24, style: 'bordered' },
             {
               title: 'Workload',
               style: 'bordered',
@@ -140,7 +140,7 @@ const complexWorkbook = defineWorkbook({
                       children: [
                         {
                           title: 'Hours',
-                          key: 'hours',
+                          id: 'hours',
                           width: 12,
                           style: 'number',
                         },
@@ -154,7 +154,7 @@ const complexWorkbook = defineWorkbook({
                     },
                     {
                       title: 'Overtime',
-                      key: 'overtimeHours',
+                      id: 'overtimeHours',
                       width: 12,
                       style: 'number',
                     },
@@ -166,13 +166,13 @@ const complexWorkbook = defineWorkbook({
                   children: [
                     {
                       title: 'Projects',
-                      key: 'projects',
+                      id: 'projects',
                       width: 12,
                       style: 'number',
                     },
                     {
                       title: 'Points',
-                      key: 'points',
+                      id: 'points',
                       width: 12,
                       style: 'number',
                     },
@@ -236,13 +236,13 @@ const staggeredHeaderWorkbook = defineWorkbook({
           headerStyle: 'header',
           border: 'thin',
           columns: [
-            { title: 'STT', key: 'stt' },
+            { title: 'STT', id: 'stt' },
             {
               title: 'Thực tế giảng dạy',
               children: [
                 {
                   title: 'Học kỳ I',
-                  children: [{ title: 'VN', key: 'hocKyI_vn' }],
+                  children: [{ title: 'VN', id: 'hocKyI_vn' }],
                 },
               ],
             },
@@ -250,8 +250,8 @@ const staggeredHeaderWorkbook = defineWorkbook({
               title: 'Thành tiền',
               childrenRowOffset: 2,
               children: [
-                { title: 'VN', key: 'vn' },
-                { title: 'Tổng', key: 'tong' },
+                { title: 'VN', id: 'vn' },
+                { title: 'Tổng', id: 'tong' },
               ],
             },
           ],
@@ -441,8 +441,8 @@ export async function runHeaderTreeTest(): Promise<void> {
                 columns: [
                   {
                     title: 'Parent',
-                    key: 'parent',
-                    children: [{ title: 'Leaf', key: 'leaf' }],
+                    id: 'parent',
+                    children: [{ title: 'Leaf', id: 'leaf' }],
                   },
                 ],
                 data: [],
@@ -453,7 +453,7 @@ export async function runHeaderTreeTest(): Promise<void> {
       }),
     (error) =>
       error instanceof ReportEngineError &&
-      error.message.includes('with children must not include key or accessor'),
+      error.message.includes('with children must not include id or accessor'),
   );
 
   assert.throws(
@@ -480,6 +480,6 @@ export async function runHeaderTreeTest(): Promise<void> {
       }),
     (error) =>
       error instanceof ReportEngineError &&
-      error.message.includes('leaf column must include a key or accessor'),
+      error.message.includes('leaf column must include an id or accessor'),
   );
 }

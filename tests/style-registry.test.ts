@@ -64,7 +64,7 @@ const directColumnStyleWorkbook = defineWorkbook({
           columns: [
             {
               title: 'Lecturer',
-              key: 'name',
+              id: 'name',
               headerStyle: {
                 font: { bold: true, family: 4 },
                 fill: {
@@ -76,7 +76,7 @@ const directColumnStyleWorkbook = defineWorkbook({
             },
             {
               title: 'Amount',
-              key: 'amount',
+              id: 'amount',
               style: {
                 numFmt: '#,##0',
                 alignment: { horizontal: 'right', vertical: 'middle' },

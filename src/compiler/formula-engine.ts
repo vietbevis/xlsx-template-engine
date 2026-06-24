@@ -9,10 +9,10 @@ import type {
 import type { RenderCell } from './render-plan';
 
 export interface FormulaCompileContext {
-  resolveCellKey(key: string, sheetId?: string): string;
-  resolveRangeKeys(
-    startKey: string,
-    endKey: string,
+  resolveCellId(id: string, sheetId?: string): string;
+  resolveRangeIds(
+    startId: string,
+    endId: string,
     sheetId?: string,
     scope?: FormulaRangeScope,
   ): string;
@@ -43,11 +43,11 @@ export function compileFormula(
     case 'literal':
       return compileLiteralFormula(formula.value);
     case 'ref':
-      return requireCompileContext(context).resolveCellKey(formula.key, formula.sheetId);
+      return requireCompileContext(context).resolveCellId(formula.id, formula.sheetId);
     case 'range':
-      return requireCompileContext(context).resolveRangeKeys(
-        formula.startKey,
-        formula.endKey,
+      return requireCompileContext(context).resolveRangeIds(
+        formula.startId,
+        formula.endId,
         formula.sheetId,
         formula.scope,
       );
@@ -85,23 +85,23 @@ export function isFormulaDefinition(value: unknown): value is FormulaDefinition 
 }
 
 export function createFormulaCompileContext(
-  keyMap: Map<string, CellAddress>,
+  idMap: Map<string, CellAddress>,
   options: FormulaCompileContextOptions = {},
 ): FormulaCompileContext {
   return {
-    resolveCellKey(key: string, sheetId?: string): string {
+    resolveCellId(id: string, sheetId?: string): string {
       const targetSheetId = sheetId ?? options.currentSheetId;
-      const address = keyMap.get(createFormulaKey(targetSheetId, key));
+      const address = idMap.get(createFormulaId(targetSheetId, id));
 
       if (!address) {
-        throw new ReportEngineError(`Formula references unknown cell key "${key}".`);
+        throw new ReportEngineError(`Formula references unknown cell id "${id}".`);
       }
 
       return formatCellReference(address, options.currentSheetId);
     },
-    resolveRangeKeys(
-      startKey: string,
-      endKey: string,
+    resolveRangeIds(
+      startId: string,
+      endId: string,
       sheetId?: string,
       scope?: FormulaRangeScope,
     ): string {
@@ -112,19 +112,19 @@ export function createFormulaCompileContext(
       }
 
       const targetSheetId = sheetId ?? options.currentSheetId;
-      const start = keyMap.get(createFormulaKey(targetSheetId, startKey));
-      const end = keyMap.get(createFormulaKey(targetSheetId, endKey));
+      const start = idMap.get(createFormulaId(targetSheetId, startId));
+      const end = idMap.get(createFormulaId(targetSheetId, endId));
 
       if (!start) {
-        throw new ReportEngineError(`Formula references unknown range start key "${startKey}".`);
+        throw new ReportEngineError(`Formula references unknown range start id "${startId}".`);
       }
 
       if (!end) {
-        throw new ReportEngineError(`Formula references unknown range end key "${endKey}".`);
+        throw new ReportEngineError(`Formula references unknown range end id "${endId}".`);
       }
 
       if (end.row < start.row || end.column < start.column) {
-        throw new ReportEngineError('Formula range end key must resolve after start key.');
+        throw new ReportEngineError('Formula range end id must resolve after start id.');
       }
 
       return `${formatCellReference(start, options.currentSheetId)}:${formatCellReference(end, options.currentSheetId)}`;
@@ -174,9 +174,9 @@ function compileSumArguments(
   const args = [
     ...(range
       ? [
-          requireCompileContext(context).resolveRangeKeys(
-            range.startKey,
-            range.endKey,
+          requireCompileContext(context).resolveRangeIds(
+            range.startId,
+            range.endId,
             range.sheetId,
             range.scope,
           ),
@@ -192,8 +192,8 @@ function compileSumArguments(
   return args.join(',');
 }
 
-export function createFormulaKey(sheetId: string | undefined, key: string): string {
-  return sheetId ? `${sheetId}:${key}` : key;
+export function createFormulaId(sheetId: string | undefined, id: string): string {
+  return sheetId ? `${sheetId}:${id}` : id;
 }
 
 function quoteSheetName(sheetName: string): string {
@@ -248,7 +248,7 @@ function compileBinaryOperator(operator: FormulaBinaryOperator): string {
 
 function requireCompileContext(context: FormulaCompileContext | undefined): FormulaCompileContext {
   if (!context) {
-    throw new ReportEngineError('Formula key references require a compile context.');
+    throw new ReportEngineError('Formula id references require a compile context.');
   }
 
   return context;

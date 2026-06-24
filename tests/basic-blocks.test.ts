@@ -73,6 +73,6 @@ export async function runBasicBlocksTest(): Promise<void> {
       }),
     (error) =>
       error instanceof ReportEngineError &&
-      error.message.includes('title height must be greater than 0'),
+      error.message.includes('sheet "summary" > title block 1 height must be greater than 0'),
   );
 }

@@ -2,13 +2,13 @@ import ExcelJS from 'exceljs';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import {
-  collectFormulaDependencies,
   compileWorkbookToRenderPlan,
   defineWorkbook,
   renderWorkbook,
-  TableColumn,
   type CellContent,
+  type TableColumn,
 } from '../src';
+import { collectFormulaDependencies } from '../src/advanced';
 
 interface LecturerRow extends Record<string, unknown> {
   order: CellContent;
@@ -25,21 +25,21 @@ type SectionRow =
 type TableRow = LecturerRow | SectionRow;
 
 const columns: TableColumn<LecturerRow>[] = [
-  { title: 'STT', key: 'order', width: 8, bodyStyle: 'number' },
-  { title: 'Họ tên Giảng viên', key: 'name', width: 24 },
-  { title: 'Thu nhập', key: 'income', width: 14, bodyStyle: 'number' },
+  { title: 'STT', id: 'order', width: 8, bodyStyle: 'number' },
+  { title: 'Họ tên Giảng viên', id: 'name', width: 24 },
+  { title: 'Thu nhập', id: 'income', width: 14, bodyStyle: 'number' },
   {
     title: 'Thực tế giảng dạy',
     children: [
-      { title: 'VN', key: 'hours', width: 10, bodyStyle: 'number' },
+      { title: 'VN', id: 'hours', width: 10, bodyStyle: 'number' },
       {
         title: 'Thành tiền',
-        key: 'amount',
+        id: 'amount',
         accessor: (row: LecturerRow) =>
           row.amount ?? {
             type: 'binary',
             operator: '*',
-            left: { type: 'ref', key: 'hours' },
+            left: { type: 'ref', id: 'hours' },
             right: { type: 'literal', value: 100000 },
           },
         width: 14,
@@ -236,20 +236,20 @@ function createTotalRow(scope: 'currentRows' | 'allRows', label: string) {
     cells: [
       { column: 1, value: label, colSpan: 2 },
       {
-        key: scope === 'currentRows' ? 'income_total' : undefined,
-        columnKey: 'income',
+        id: scope === 'currentRows' ? 'income_total' : undefined,
+        columnId: 'income',
         style: 'number',
         value: scopedSum('income', scope),
       },
       {
-        key: scope === 'currentRows' ? 'hours_total' : undefined,
-        columnKey: 'hours',
+        id: scope === 'currentRows' ? 'hours_total' : undefined,
+        columnId: 'hours',
         style: 'number',
         value: scopedSum('hours', scope),
       },
       {
-        key: scope === 'currentRows' ? 'amount_total' : undefined,
-        columnKey: 'amount',
+        id: scope === 'currentRows' ? 'amount_total' : undefined,
+        columnId: 'amount',
         style: 'number',
         value: scopedSum('amount', scope),
       },
@@ -272,12 +272,12 @@ function createNumberInWordsRow() {
   };
 }
 
-function ref(sheetId: string, key: string): CellContent {
-  return { type: 'ref', sheetId, key };
+function ref(sheetId: string, id: string): CellContent {
+  return { type: 'ref', sheetId, id };
 }
 
-function scopedSum(key: string, scope: 'currentRows' | 'allRows'): CellContent {
-  return { type: 'sum', range: { startKey: key, endKey: key, scope } };
+function scopedSum(id: string, scope: 'currentRows' | 'allRows'): CellContent {
+  return { type: 'sum', range: { startId: id, endId: id, scope } };
 }
 
 function getRenderFormula(

@@ -18,7 +18,8 @@ Supported examples:
 
 Context merge theo thu tu uu tien:
 
-- Workbook render context.
+- Workbook scope: `renderWorkbook(..., { context })` override `workbook.context`.
+- Variable lookup scope: `block` override `sheet`, `sheet` override `workbook`.
 - Sheet context neu co.
 - Block context neu co.
 

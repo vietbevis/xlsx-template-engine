@@ -1,11 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdir } from "node:fs/promises";
 import ExcelJS from "exceljs";
-import {
-  ReportEngineError,
-  RenderPlanBuilder,
-  normalizeMergeRange,
-} from "../src";
+import { ReportEngineError } from "../src";
+import { RenderPlanBuilder, normalizeMergeRange } from "../src/advanced";
 import { ExcelJsWorkbookAdapter } from "../src/adapters/exceljs/workbook-adapter";
 
 export async function runMergeEngineTest(): Promise<void> {
@@ -17,22 +14,25 @@ export async function runMergeEngineTest(): Promise<void> {
       endColumn: 2,
     }),
     {
-      sheetId: "summary",
-      startRow: 1,
-      startColumn: 1,
-      endRow: 1,
-      endColumn: 2,
+      type: "range",
+      range: {
+        sheetId: "summary",
+        startRow: 1,
+        startColumn: 1,
+        endRow: 1,
+        endColumn: 2,
+      },
     },
   );
 
-  assert.equal(
+  assert.deepEqual(
     normalizeMergeRange("summary", {
       startRow: 1,
       startColumn: 1,
       endRow: 1,
       endColumn: 1,
     }),
-    null,
+    { type: "skip-single-cell" },
   );
 
   assert.throws(

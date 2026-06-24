@@ -22,6 +22,9 @@ Them examples chay bang `tsx`:
   - no auto-generated columns
   - no auto width
   - no auto height
+  - array table data is supported; `AsyncIterable` data is not implemented yet
+  - `writeBuffer` uses the non-streaming workbook path
+  - current `RenderPlan` still materializes rows before the adapter writes them
   - ExcelJS primitives are reused directly for workbook values/styles where useful
 
 ## Tests

@@ -1,11 +1,10 @@
 import assert from "node:assert/strict";
 import {
-  LayoutCursor,
   ReportEngineError,
-  RenderPlanBuilder,
   compileWorkbookToRenderPlan,
   defineWorkbook,
 } from "../src";
+import { LayoutCursor, RenderPlanBuilder } from "../src/advanced";
 
 const workbook = defineWorkbook({
   metadata: { title: "Render Plan" },
@@ -23,10 +22,14 @@ assert.equal(renderPlan.sheets[0]?.name, "Summary");
 assert.deepEqual(renderPlan.sheets[0]?.rows, []);
 assert.deepEqual(renderPlan.sheets[0]?.merges, []);
 
-const builder = new RenderPlanBuilder({ title: "Builder" }, { header: {} });
+const builder = new RenderPlanBuilder({
+  metadata: { title: "Builder" },
+  styles: { header: {} },
+});
 builder.addSheet("summary", "Summary");
 builder.addCell("summary", { row: 2, column: 1, value: "A", style: "header" });
 builder.addCell("summary", { row: 1, column: 2, value: 10 });
+builder.addCell("summary", { row: 1, column: 1, value: "First" });
 builder.addMerge("summary", {
   startRow: 1,
   startColumn: 1,
@@ -39,6 +42,8 @@ builder.setRowHeight("summary", { row: 1, height: 24 });
 const builtPlan = builder.build();
 assert.equal(builtPlan.sheets[0]?.rows[0]?.index, 1);
 assert.equal(builtPlan.sheets[0]?.rows[1]?.index, 2);
+assert.equal(builtPlan.sheets[0]?.rows[0]?.cells[0]?.value, "First");
+assert.equal(builtPlan.sheets[0]?.rows[0]?.cells[1]?.value, 10);
 assert.equal(builtPlan.sheets[0]?.rows[1]?.cells[0]?.value, "A");
 assert.equal(builtPlan.sheets[0]?.merges.length, 1);
 assert.equal(builtPlan.sheets[0]?.columnWidths[0]?.width, 20);

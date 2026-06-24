@@ -2,12 +2,11 @@ import ExcelJS from 'exceljs';
 import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import {
-  collectFormulaDependencies,
   compileWorkbookToRenderPlan,
-  createSheetRegistry,
   defineWorkbook,
   renderWorkbook,
 } from '../src';
+import { collectFormulaDependencies, createSheetRegistry } from '../src/advanced';
 
 interface FormulaCellValue {
   formula?: string;
@@ -33,14 +32,14 @@ const workbook = defineWorkbook({
           rows: [
             {
               cells: [
-                { key: 'label', value: 'Grand total' },
+                { id: 'label', value: 'Grand total' },
                 {
-                  key: 'grand_total',
+                  id: 'grand_total',
                   value: {
                     type: 'sum',
                     values: [
-                      { type: 'ref', sheetId: 'department', key: 'total' },
-                      { type: 'ref', sheetId: 'appendix', key: 'manual_adjustment' },
+                      { type: 'ref', sheetId: 'department', id: 'total' },
+                      { type: 'ref', sheetId: 'appendix', id: 'manual_adjustment' },
                     ],
                   },
                 },
@@ -63,15 +62,15 @@ const workbook = defineWorkbook({
           rows: [
             {
               cells: [
-                { key: 'base_hours', value: 30 },
-                { key: 'rate', value: 12 },
+                { id: 'base_hours', value: 30 },
+                { id: 'rate', value: 12 },
                 {
-                  key: 'total',
+                  id: 'total',
                   value: {
                     type: 'binary',
                     operator: '*',
-                    left: { type: 'ref', key: 'base_hours' },
-                    right: { type: 'ref', key: 'rate' },
+                    left: { type: 'ref', id: 'base_hours' },
+                    right: { type: 'ref', id: 'rate' },
                   },
                 },
               ],
@@ -88,7 +87,7 @@ const workbook = defineWorkbook({
           type: 'grid',
           rows: [
             {
-              cells: [{ key: 'manual_adjustment', value: 5 }],
+              cells: [{ id: 'manual_adjustment', value: 5 }],
             },
           ],
         },
@@ -166,7 +165,7 @@ export async function runMultiSheetTest(): Promise<void> {
               {
                 cells: [
                   {
-                    value: { type: 'ref', sheetId: 'department', key: 'total' },
+                    value: { type: 'ref', sheetId: 'department', id: 'total' },
                   },
                 ],
               },
@@ -182,7 +181,7 @@ export async function runMultiSheetTest(): Promise<void> {
             type: 'grid',
             rows: [
               {
-                cells: [{ key: 'total', value: 99 }],
+                cells: [{ id: 'total', value: 99 }],
               },
             ],
           },
@@ -210,7 +209,10 @@ export async function runMultiSheetTest(): Promise<void> {
                     {
                       cells: [
                         {
-                          value: { type: 'ref', sheetId: 'missing', key: 'total'
+                          value: { type: 'ref', sheetId: 'missing', id: 'total' },
+                        },
+                      ],
+                    },
                   ],
                 },
               ],

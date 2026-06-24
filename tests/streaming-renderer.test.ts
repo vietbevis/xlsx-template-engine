@@ -31,16 +31,16 @@ function createLargeTableWorkbook(rowCount: number) {
           {
             type: "table",
             columns: [
-              { title: "Index", key: "index", style: "number" },
-              { title: "Value", key: "value", style: "number" },
+              { title: "Index", id: "index", style: "number" },
+              { title: "Value", id: "value", style: "number" },
               {
                 title: "Double",
-                key: "double",
+                id: "double",
                 style: "number",
                 accessor: () => ({
                   type: "binary",
                   operator: "*",
-                  left: { type: "ref", key: "value" },
+                  left: { type: "ref", id: "value" },
                   right: { type: "literal", value: 2 },
                 }),
               },

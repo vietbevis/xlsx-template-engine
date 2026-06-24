@@ -15,15 +15,18 @@ import type {
 } from './render-plan';
 import { assertMergeDoesNotOverlap, normalizeMergeRange, type MergeRange } from './merge-engine';
 
+export interface RenderPlanBuilderOptions {
+  metadata?: WorkbookMetadata;
+  defaultStyle?: CellStyleDefinition;
+  styles?: StyleRegistry;
+}
+
 export class RenderPlanBuilder {
   private readonly sheets = new Map<string, RenderPlanSheet>();
+  private readonly rowsBySheet = new Map<string, Map<number, RenderPlanSheet['rows'][number]>>();
   private readonly mergeRanges: MergeRange[] = [];
 
-  constructor(
-    private readonly metadata?: WorkbookMetadata,
-    private readonly defaultStyle?: CellStyleDefinition,
-    private readonly styles?: StyleRegistry,
-  ) {}
+  constructor(private readonly options: RenderPlanBuilderOptions = {}) {}
 
   addSheet(id: string, name: string): void {
     if (this.sheets.has(id)) {
@@ -38,6 +41,7 @@ export class RenderPlanBuilder {
       columnWidths: [],
       rowHeights: [],
     });
+    this.rowsBySheet.set(id, new Map());
   }
 
   addCell(sheetId: string, cell: RenderCell): void {
@@ -52,17 +56,17 @@ export class RenderPlanBuilder {
       inlineStyle: cell.inlineStyle ? cloneStyle(cell.inlineStyle) : undefined,
       link: cell.link ? { ...cell.link } : undefined,
     });
-    row.cells.sort((left, right) => left.column - right.column);
   }
 
   addMerge(sheetId: string, range: RenderMergeRange): void {
     const sheet = this.getSheet(sheetId);
-    const normalizedRange = normalizeMergeRange(sheetId, range);
+    const normalized = normalizeMergeRange(sheetId, range);
 
-    if (!normalizedRange) {
+    if (normalized.type === 'skip-single-cell') {
       return;
     }
 
+    const normalizedRange = normalized.range;
     assertMergeDoesNotOverlap(normalizedRange, this.mergeRanges);
     this.mergeRanges.push(normalizedRange);
     sheet.merges.push({
@@ -95,20 +99,22 @@ export class RenderPlanBuilder {
 
   build(): RenderPlan {
     return {
-      metadata: this.metadata
+      metadata: this.options.metadata
         ? {
-            ...this.metadata,
-            keywords: this.metadata.keywords ? [...this.metadata.keywords] : undefined,
+            ...this.options.metadata,
+            keywords: this.options.metadata.keywords
+              ? [...this.options.metadata.keywords]
+              : undefined,
           }
         : undefined,
-      defaultStyle: this.defaultStyle ? cloneStyle(this.defaultStyle) : undefined,
-      styles: this.styles ? resolveStyleRegistry(this.styles) : undefined,
+      defaultStyle: this.options.defaultStyle ? cloneStyle(this.options.defaultStyle) : undefined,
+      styles: this.options.styles ? resolveStyleRegistry(this.options.styles) : undefined,
       sheets: Array.from(this.sheets.values()).map((sheet) => ({
         id: sheet.id,
         name: sheet.name,
-        rows: sheet.rows.map((row) => ({
+        rows: [...sheet.rows].sort(compareRows).map((row) => ({
           index: row.index,
-          cells: row.cells.map((cell) => ({
+          cells: [...row.cells].sort(compareCells).map((cell) => ({
             ...cell,
             style: cloneStyleValue(cell.style),
             inlineStyle: cell.inlineStyle ? cloneStyle(cell.inlineStyle) : undefined,
@@ -132,8 +138,17 @@ export class RenderPlanBuilder {
     return sheet;
   }
 
-  private getOrCreateRow(sheet: RenderPlanSheet, rowIndex: number) {
-    const existingRow = sheet.rows.find((row) => row.index === rowIndex);
+  private getOrCreateRow(
+    sheet: RenderPlanSheet,
+    rowIndex: number,
+  ): RenderPlanSheet['rows'][number] {
+    const rowMap = this.rowsBySheet.get(sheet.id);
+
+    if (!rowMap) {
+      throw new ReportEngineError(`Render plan does not contain sheet "${sheet.id}".`);
+    }
+
+    const existingRow = rowMap.get(rowIndex);
 
     if (existingRow) {
       return existingRow;
@@ -141,9 +156,20 @@ export class RenderPlanBuilder {
 
     const row = { index: rowIndex, cells: [] };
     sheet.rows.push(row);
-    sheet.rows.sort((left, right) => left.index - right.index);
+    rowMap.set(rowIndex, row);
     return row;
   }
+}
+
+function compareRows(
+  left: RenderPlanSheet['rows'][number],
+  right: RenderPlanSheet['rows'][number],
+): number {
+  return left.index - right.index;
+}
+
+function compareCells(left: RenderCell, right: RenderCell): number {
+  return left.column - right.column;
 }
 
 function assertPositiveInteger(value: number, label: string): void {

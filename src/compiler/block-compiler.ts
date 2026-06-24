@@ -19,7 +19,7 @@ import type {
 import {
   compileCellContent,
   createFormulaCompileContext,
-  createFormulaKey,
+  createFormulaId,
   formatCellAddress,
   formatCellReference,
   isFormulaDefinition,
@@ -35,7 +35,7 @@ export interface SheetContext {
   sheet: SheetDefinition;
   styles?: StyleRegistry;
   variables: VariableScope;
-  formulaKeys?: Map<string, CellAddress>;
+  formulaIds?: Map<string, CellAddress>;
 }
 
 export type BlockCompiler<TBlock extends Block = Block> = (
@@ -167,7 +167,7 @@ function compileGridBlock(
   }
 
   const formulaContext = createFormulaCompileContext(
-    context.formulaKeys ?? createGridCellKeyMap(placements, context.sheet),
+    context.formulaIds ?? createGridCellIdMap(placements, context.sheet),
     { currentSheetId: context.sheet.id },
   );
 
@@ -209,18 +209,18 @@ interface GridCellPlacement {
   column: number;
 }
 
-function createGridCellKeyMap(
+function createGridCellIdMap(
   placements: GridCellPlacement[],
   sheet: SheetDefinition,
 ): Map<string, CellAddress> {
-  const keyMap = new Map<string, CellAddress>();
+  const idMap = new Map<string, CellAddress>();
 
   for (const placement of placements) {
-    if (!placement.cell.key) {
+    if (!placement.cell.id) {
       continue;
     }
 
-    registerCellKey(keyMap, createFormulaKey(sheet.id, placement.cell.key), {
+    registerCellId(idMap, createFormulaId(sheet.id, placement.cell.id), {
       row: placement.row,
       column: placement.column,
       sheetId: sheet.id,
@@ -228,7 +228,7 @@ function createGridCellKeyMap(
     });
   }
 
-  return keyMap;
+  return idMap;
 }
 
 function assertGridCellDoesNotOverlap(
@@ -273,7 +273,7 @@ function compileTableBlock(
 ): void {
   if (block.data !== undefined && !Array.isArray(block.data)) {
     throw new ReportEngineError(
-      'Table async iterable data is not supported until streaming renderer phase 15.',
+      'AsyncIterable table data is not yet supported. Use an array data source.',
     );
   }
 
@@ -281,7 +281,7 @@ function compileTableBlock(
   const headerDepth = calculateHeaderDepth(block.columns);
   const headerCells = buildHeaderMatrix(block.columns, headerDepth);
   const leafColumns = flattenLeafColumns(block.columns);
-  const tableColumnKeyMap = createTableColumnKeyMap(leafColumns);
+  const tableColumnIdMap = createTableColumnIdMap(leafColumns);
   const tableWidth = leafColumns.length;
   const allRows = collectTableDataRows(block);
   const tableInlineStyle = createTableInlineStyle(block.border);
@@ -344,7 +344,7 @@ function compileTableBlock(
         currentRenderedRows,
         cursor,
         dataIndex,
-        tableColumnKeyMap,
+        tableColumnIdMap,
         tableWidth,
         tableInlineStyle,
         variables,
@@ -364,7 +364,7 @@ function compileTableBlock(
       cursor,
       builder,
       leafColumns,
-      tableColumnKeyMap,
+      tableColumnIdMap,
       variables,
       block.bodyStyle,
       tableInlineStyle,
@@ -392,7 +392,7 @@ function compileTableTitleRow(
     column: cursor.column,
     ...compileCellContent(
       interpolateCellValue(titleRow.value, variables),
-      createFormulaCompileContext(context.formulaKeys ?? new Map(), {
+      createFormulaCompileContext(context.formulaIds ?? new Map(), {
         currentSheetId: context.sheet.id,
       }),
     ),
@@ -424,7 +424,7 @@ function compileTableDataRows(
   cursor: LayoutCursor,
   builder: RenderPlanBuilder,
   leafColumns: TableLeafColumn[],
-  tableColumnKeyMap: Map<string, number>,
+  tableColumnIdMap: Map<string, number>,
   variables: VariableScope,
   bodyStyle?: StyleValue,
   inlineStyle?: CellStyleDefinition,
@@ -433,7 +433,7 @@ function compileTableDataRows(
   for (const rowData of rows) {
     const absoluteRow = cursor.row;
     const formulaContext = createTableRowFormulaContext(
-      tableColumnKeyMap,
+      tableColumnIdMap,
       absoluteRow,
       cursor.column,
       context,
@@ -469,7 +469,7 @@ function compileTableDataRow(
   cursor: LayoutCursor,
   builder: RenderPlanBuilder,
   leafColumns: TableLeafColumn[],
-  tableColumnKeyMap: Map<string, number>,
+  tableColumnIdMap: Map<string, number>,
   variables: VariableScope,
   bodyStyle?: StyleValue,
   inlineStyle?: CellStyleDefinition,
@@ -481,7 +481,7 @@ function compileTableDataRow(
     cursor,
     builder,
     leafColumns,
-    tableColumnKeyMap,
+    tableColumnIdMap,
     variables,
     bodyStyle,
     inlineStyle,
@@ -497,7 +497,7 @@ interface CompileTableSectionRowContext {
   currentRenderedRows: RenderedTableDataRow[];
   cursor: LayoutCursor;
   dataIndex: number;
-  tableColumnKeyMap: Map<string, number>;
+  tableColumnIdMap: Map<string, number>;
   tableWidth: number;
   tableInlineStyle?: CellStyleDefinition;
   variables: VariableScope;
@@ -515,14 +515,14 @@ function compileTableSectionRow(
     currentRenderedRows,
     cursor,
     dataIndex,
-    tableColumnKeyMap,
+    tableColumnIdMap,
     tableWidth,
     tableInlineStyle,
     variables,
   } = options;
   const occupiedColumns = new Set<number>();
   const formulaContext = createTableSectionRowFormulaContext(
-    tableColumnKeyMap,
+    tableColumnIdMap,
     currentRenderedRows,
     allRenderedRows,
     cursor.row,
@@ -541,7 +541,7 @@ function compileTableSectionRow(
     const columnOffset = resolveSectionCellColumnOffset(
       cell,
       cellIndex,
-      tableColumnKeyMap,
+      tableColumnIdMap,
       occupiedColumns,
     );
     const colSpan = resolveSectionCellColSpan(cell, columnOffset, tableWidth);
@@ -628,19 +628,19 @@ interface RenderedTableDataRow {
 function resolveSectionCellColumnOffset(
   cell: TableSectionCell<Record<string, unknown>>,
   cellIndex: number,
-  tableColumnKeyMap: Map<string, number>,
+  tableColumnIdMap: Map<string, number>,
   occupiedColumns: Set<number>,
 ): number {
   if (cell.column !== undefined) {
     return cell.column - 1;
   }
 
-  if (cell.columnKey !== undefined) {
-    const offset = tableColumnKeyMap.get(cell.columnKey);
+  if (cell.columnId !== undefined) {
+    const offset = tableColumnIdMap.get(cell.columnId);
 
     if (offset === undefined) {
       throw new ReportEngineError(
-        `Table section row references unknown columnKey "${cell.columnKey}".`,
+        `Table section row references unknown columnId "${cell.columnId}".`,
       );
     }
 
@@ -693,46 +693,46 @@ function isTableSectionRow(item: unknown): item is TableSectionRow<Record<string
   return typeof item === 'object' && item !== null && 'type' in item && item.type === 'section';
 }
 
-function createTableColumnKeyMap(columns: TableLeafColumn[]): Map<string, number> {
-  const keyMap = new Map<string, number>();
+function createTableColumnIdMap(columns: TableLeafColumn[]): Map<string, number> {
+  const idMap = new Map<string, number>();
 
   for (const [columnOffset, column] of columns.entries()) {
-    if (!column.key) {
+    if (!column.id) {
       continue;
     }
 
-    if (keyMap.has(String(column.key))) {
-      throw new ReportEngineError(`Duplicate formula cell key "${String(column.key)}".`);
+    if (idMap.has(String(column.id))) {
+      throw new ReportEngineError(`Duplicate formula cell id "${String(column.id)}".`);
     }
 
-    keyMap.set(String(column.key), columnOffset);
+    idMap.set(String(column.id), columnOffset);
   }
 
-  return keyMap;
+  return idMap;
 }
 
 function createTableRowFormulaContext(
-  columnKeyMap: Map<string, number>,
+  columnIdMap: Map<string, number>,
   row: number,
   firstColumn: number,
   context: SheetContext,
 ): FormulaCompileContext {
   return {
-    resolveCellKey(key: string, sheetId?: string): string {
+    resolveCellId(id: string, sheetId?: string): string {
       if (sheetId && sheetId !== context.sheet.id) {
-        const address = context.formulaKeys?.get(createFormulaKey(sheetId, key));
+        const address = context.formulaIds?.get(createFormulaId(sheetId, id));
 
         if (!address) {
-          throw new ReportEngineError(`Formula references unknown cell key "${key}".`);
+          throw new ReportEngineError(`Formula references unknown cell id "${id}".`);
         }
 
         return formatCellReference(address, context.sheet.id);
       }
 
-      const columnOffset = columnKeyMap.get(key);
+      const columnOffset = columnIdMap.get(id);
 
       if (columnOffset === undefined) {
-        throw new ReportEngineError(`Formula references unknown cell key "${key}".`);
+        throw new ReportEngineError(`Formula references unknown cell id "${id}".`);
       }
 
       return formatCellAddress({
@@ -740,9 +740,9 @@ function createTableRowFormulaContext(
         column: firstColumn + columnOffset,
       });
     },
-    resolveRangeKeys(
-      startKey: string,
-      endKey: string,
+    resolveRangeIds(
+      startId: string,
+      endId: string,
       sheetId?: string,
       scope?: FormulaRangeScope,
     ): string {
@@ -753,19 +753,19 @@ function createTableRowFormulaContext(
       }
 
       if (sheetId && sheetId !== context.sheet.id) {
-        const start = context.formulaKeys?.get(createFormulaKey(sheetId, startKey));
-        const end = context.formulaKeys?.get(createFormulaKey(sheetId, endKey));
+        const start = context.formulaIds?.get(createFormulaId(sheetId, startId));
+        const end = context.formulaIds?.get(createFormulaId(sheetId, endId));
 
         if (!start) {
-          throw new ReportEngineError(`Formula references unknown range start key "${startKey}".`);
+          throw new ReportEngineError(`Formula references unknown range start id "${startId}".`);
         }
 
         if (!end) {
-          throw new ReportEngineError(`Formula references unknown range end key "${endKey}".`);
+          throw new ReportEngineError(`Formula references unknown range end id "${endId}".`);
         }
 
         if (end.row < start.row || end.column < start.column) {
-          throw new ReportEngineError('Formula range end key must resolve after start key.');
+          throw new ReportEngineError('Formula range end id must resolve after start id.');
         }
 
         return [
@@ -774,19 +774,19 @@ function createTableRowFormulaContext(
         ].join(':');
       }
 
-      const startColumnOffset = columnKeyMap.get(startKey);
-      const endColumnOffset = columnKeyMap.get(endKey);
+      const startColumnOffset = columnIdMap.get(startId);
+      const endColumnOffset = columnIdMap.get(endId);
 
       if (startColumnOffset === undefined) {
-        throw new ReportEngineError(`Formula references unknown range start key "${startKey}".`);
+        throw new ReportEngineError(`Formula references unknown range start id "${startId}".`);
       }
 
       if (endColumnOffset === undefined) {
-        throw new ReportEngineError(`Formula references unknown range end key "${endKey}".`);
+        throw new ReportEngineError(`Formula references unknown range end id "${endId}".`);
       }
 
       if (endColumnOffset < startColumnOffset) {
-        throw new ReportEngineError('Formula range end key must resolve after start key.');
+        throw new ReportEngineError('Formula range end id must resolve after start id.');
       }
 
       return [
@@ -798,25 +798,25 @@ function createTableRowFormulaContext(
 }
 
 function createTableSectionRowFormulaContext(
-  columnKeyMap: Map<string, number>,
+  columnIdMap: Map<string, number>,
   currentRows: RenderedTableDataRow[],
   allRows: RenderedTableDataRow[],
   row: number,
   firstColumn: number,
   context: SheetContext,
 ): FormulaCompileContext {
-  const rowContext = createTableRowFormulaContext(columnKeyMap, row, firstColumn, context);
+  const rowContext = createTableRowFormulaContext(columnIdMap, row, firstColumn, context);
 
   return {
-    resolveCellKey: rowContext.resolveCellKey,
-    resolveRangeKeys(
-      startKey: string,
-      endKey: string,
+    resolveCellId: rowContext.resolveCellId,
+    resolveRangeIds(
+      startId: string,
+      endId: string,
       sheetId?: string,
       scope?: FormulaRangeScope,
     ): string {
       if (!scope) {
-        return rowContext.resolveRangeKeys(startKey, endKey, sheetId);
+        return rowContext.resolveRangeIds(startId, endId, sheetId);
       }
 
       if (sheetId && sheetId !== context.sheet.id) {
@@ -826,19 +826,19 @@ function createTableSectionRowFormulaContext(
       }
 
       const rows = scope === 'allRows' ? allRows : currentRows;
-      const startColumnOffset = columnKeyMap.get(startKey);
-      const endColumnOffset = columnKeyMap.get(endKey);
+      const startColumnOffset = columnIdMap.get(startId);
+      const endColumnOffset = columnIdMap.get(endId);
 
       if (startColumnOffset === undefined) {
-        throw new ReportEngineError(`Formula references unknown range start key "${startKey}".`);
+        throw new ReportEngineError(`Formula references unknown range start id "${startId}".`);
       }
 
       if (endColumnOffset === undefined) {
-        throw new ReportEngineError(`Formula references unknown range end key "${endKey}".`);
+        throw new ReportEngineError(`Formula references unknown range end id "${endId}".`);
       }
 
       if (endColumnOffset < startColumnOffset) {
-        throw new ReportEngineError('Formula range end key must resolve after start key.');
+        throw new ReportEngineError('Formula range end id must resolve after start id.');
       }
 
       if (rows.length === 0) {
@@ -897,16 +897,16 @@ function formatTableRowRange(
   ].join(':');
 }
 
-function registerCellKey(
-  keyMap: Map<string, CellAddress>,
+function registerCellId(
+  idMap: Map<string, CellAddress>,
   registryKey: string,
   address: CellAddress,
 ): void {
-  if (keyMap.has(registryKey)) {
-    throw new ReportEngineError(`Duplicate formula cell key "${registryKey}".`);
+  if (idMap.has(registryKey)) {
+    throw new ReportEngineError(`Duplicate formula cell id "${registryKey}".`);
   }
 
-  keyMap.set(registryKey, address);
+  idMap.set(registryKey, address);
 }
 
 function createBlockVariableScope(context: SheetContext, block: Block): VariableScope {
@@ -922,7 +922,7 @@ function resolveTableCellValue(row: Record<string, unknown>, column: TableLeafCo
     return column.accessor(row);
   }
 
-  const value = column.key ? row[String(column.key)] : null;
+  const value = column.id ? row[String(column.id)] : null;
   return value === undefined ? null : value;
 }
 

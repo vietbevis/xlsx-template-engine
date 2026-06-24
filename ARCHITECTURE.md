@@ -4,7 +4,7 @@ Excel Report Engine Specification
 
 Xây dựng một thư viện TypeScript chạy trên môi trường server để sinh file Excel.
 
-Thư viện sử dụng ExcelJS làm lõi workbook/cell/style chính. Engine không cố định nghĩa lại các primitive mà ExcelJS đã có; phần riêng của engine chỉ nằm ở report DSL, layout block, semantic key, formula resolver và streaming workflow.
+Thư viện sử dụng ExcelJS làm lõi workbook/cell/style chính. Engine không cố định nghĩa lại các primitive mà ExcelJS đã có; phần riêng của engine chỉ nằm ở report DSL, layout block, semantic id, formula resolver và streaming workflow.
 
 Mục tiêu là xây dựng một Report Engine hoàn chỉnh, không phải một JSON-to-Excel wrapper.
 
@@ -25,7 +25,7 @@ Data không được phép thay đổi cấu trúc báo cáo.
 columns = [
   {
     title: "Toán",
-    key: "math"
+    id:  "math"
   }
 ]
 data = [
@@ -272,11 +272,11 @@ Ví dụ:
     children: [
       {
         title: "Toán",
-        key: "math"
+        id:  "math"
       },
       {
         title: "Lý",
-        key: "physics"
+        id:  "physics"
       }
     ]
   }
@@ -640,20 +640,13 @@ Phase 16
 * Sheet Link Engine
 
 :::
-Có một điểm duy nhất tôi đề xuất điều chỉnh trước khi bắt đầu code sâu hơn:
-**Sheet Definition nên có `key` thay vì `id` hoặc hỗ trợ cả hai nhưng chỉ giữ một khái niệm duy nhất.**
+Có một điểm đã được chốt trước khi đi sâu hơn:
+**Sheet Definition giữ `id` làm định danh ổn định duy nhất; không hỗ trợ thêm `key`.**
 Ví dụ:
 ```ts
-interface SheetDefinition {
-  key: string
-  name: string
-}
-
-hoặc
-
 interface SheetDefinition {
   id: string
   name: string
 }
 
-Không nên tồn tại đồng thời id và key vì sau này toàn bộ Formula Engine, Dependency Graph, Hyperlink Engine, Named Range Mapping đều sẽ phụ thuộc vào định danh này. Chọn một tên duy nhất từ đầu sẽ tránh rất nhiều refactor về sau. Tôi nghiêng về key hơn vì nó gần với khái niệm “stable identifier” trong các engine báo cáo.
+Không nên tồn tại đồng thời `id` và `key` vì sau này toàn bộ Formula Engine, Dependency Graph, Hyperlink Engine, Named Range Mapping đều phụ thuộc vào định danh này. `id` được chọn vì rõ nghĩa entity identifier và tránh nhập nhằng với object key, React key, column key, formula key trong JavaScript/TypeScript.

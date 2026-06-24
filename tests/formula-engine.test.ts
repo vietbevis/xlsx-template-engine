@@ -3,14 +3,12 @@ import { mkdir } from "node:fs/promises";
 import ExcelJS from "exceljs";
 import {
   ReportEngineError,
-  compileFormula,
   compileWorkbookToRenderPlan,
-  createFormulaCompileContext,
   defineWorkbook,
-  formatCellAddress,
   renderWorkbook,
   type FormulaDefinition,
 } from "../src";
+import { compileFormula, createFormulaCompileContext, formatCellAddress } from "../src/advanced";
 
 interface FormulaCellValue {
   formula?: string;
@@ -26,7 +24,7 @@ const complexFormula: FormulaDefinition = {
       type: "round",
       value: {
         type: "sum",
-        range: { startKey: "score_start", endKey: "score_end" },
+        range: { startId: "score_start", endId: "score_end" },
       },
       digits: 0,
     },
@@ -35,13 +33,13 @@ const complexFormula: FormulaDefinition = {
   whenTrue: {
     type: "sum",
     values: [
-      { type: "ref", key: "bonus" },
+      { type: "ref", id: "bonus" },
       {
         type: "call",
         name: "max",
         args: [
-          { type: "ref", key: "score_start" },
-          { type: "ref", key: "score_end" },
+          { type: "ref", id: "score_start" },
+          { type: "ref", id: "score_end" },
         ],
       },
     ],
@@ -60,17 +58,17 @@ const workbook = defineWorkbook({
           rows: [
             {
               cells: [
-                { key: "score_start", value: 10 },
-                { key: "bonus", value: 5 },
+                { id: "score_start", value: 10 },
+                { id: "bonus", value: 5 },
               ],
             },
             {
-              cells: [{ key: "score_end", value: 15 }],
+              cells: [{ id: "score_end", value: 15 }],
             },
             {
               cells: [
                 {
-                  key: "decision",
+                  id: "decision",
                   value: complexFormula,
                 },
               ],
@@ -80,18 +78,18 @@ const workbook = defineWorkbook({
         {
           type: "table",
           columns: [
-            { title: "Hours", key: "hours" },
-            { title: "Rate", key: "rate" },
+            { title: "Hours", id: "hours" },
+            { title: "Rate", id: "rate" },
             {
               title: "Amount",
-              key: "amount",
+              id: "amount",
               accessor: () => ({
                 type: "round",
                 value: {
                   type: "binary",
                   operator: "*",
-                  left: { type: "ref", key: "hours" },
-                  right: { type: "ref", key: "rate" },
+                  left: { type: "ref", id: "hours" },
+                  right: { type: "ref", id: "rate" },
                 },
                 digits: 0,
               }),
@@ -117,12 +115,12 @@ export async function runFormulaEngineTest(): Promise<void> {
   );
 
   assert.equal(formatCellAddress({ row: 3, column: 28 }), "AB3");
-  assert.equal(compileFormula({ type: "ref", key: "bonus" }, formulaContext), "B1");
+  assert.equal(compileFormula({ type: "ref", id: "bonus" }, formulaContext), "B1");
   assert.equal(
     compileFormula(
       {
         type: "sum",
-        range: { startKey: "score_start", endKey: "score_end" },
+        range: { startId: "score_start", endId: "score_end" },
       },
       formulaContext,
     ),
@@ -161,10 +159,31 @@ export async function runFormulaEngineTest(): Promise<void> {
   assert.notEqual(sheet.getCell("A3").value, "IF((ROUND(SUM(A1:A2),0)>20),SUM(B1,MAX(A1,A2)),0)");
 
   assert.throws(
-    () => compileFormula({ type: "ref", key: "missing" }, formulaContext),
+    () => compileFormula({ type: "ref", id: "missing" }, formulaContext),
     (error) =>
       error instanceof ReportEngineError &&
-      error.message.includes('unknown cell key "missing"'),
+      error.message.includes('unknown cell id "missing"'),
+  );
+
+  assert.throws(
+    () =>
+      defineWorkbook({
+        sheets: [
+          {
+            id: "deprecated_formula",
+            name: "Deprecated Formula",
+            blocks: [
+              {
+                type: "grid",
+                rows: [{ cells: [{ value: { type: "ref", key: "legacy" } }] }],
+              },
+            ],
+          },
+        ],
+      }),
+    (error) =>
+      error instanceof ReportEngineError &&
+      error.message.includes('uses deprecated "key"; use id-based fields'),
   );
 
   assert.throws(

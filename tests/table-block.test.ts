@@ -42,8 +42,8 @@ const workbook = defineWorkbook({
           bodyRowHeight: 18,
           bodyStyle: 'body',
           columns: [
-            { title: 'Lecturer', key: 'name', width: 24 },
-            { title: 'Hours', key: 'hours', width: 12, style: 'amount' },
+            { title: 'Lecturer', id: 'name', width: 24 },
+            { title: 'Hours', id: 'hours', width: 12, style: 'amount' },
             {
               title: 'Amount',
               accessor: (row: LecturerRow) => row.hours * row.rate,
@@ -146,7 +146,7 @@ export async function runTableBlockTest(): Promise<void> {
             blocks: [
               {
                 type: 'table',
-                columns: [{ title: 'No key' }],
+                columns: [{ title: 'No id' }],
                 data: [],
               },
             ],
@@ -155,7 +155,7 @@ export async function runTableBlockTest(): Promise<void> {
       }),
     (error) =>
       error instanceof ReportEngineError &&
-      error.message.includes('must include a key or accessor'),
+      error.message.includes('must include an id or accessor'),
   );
 
   assert.throws(
@@ -169,7 +169,7 @@ export async function runTableBlockTest(): Promise<void> {
               {
                 type: 'table',
                 headerRowHeights: [20, 20],
-                columns: [{ title: 'Name', key: 'name' }],
+                columns: [{ title: 'Name', id: 'name' }],
                 data: [],
               },
             ],
@@ -192,7 +192,7 @@ export async function runTableBlockTest(): Promise<void> {
               {
                 type: 'table',
                 bodyRowHeight: 0,
-                columns: [{ title: 'Name', key: 'name' }],
+                columns: [{ title: 'Name', id: 'name' }],
                 data: [],
               },
             ],
