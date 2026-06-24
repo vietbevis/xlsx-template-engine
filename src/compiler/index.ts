@@ -32,7 +32,7 @@ export function compileWorkbookToRenderPlan(
     ...(workbook.context ?? {}),
     ...(options.context ?? {}),
   };
-  const builder = new RenderPlanBuilder(workbook.metadata, workbook.styles);
+  const builder = new RenderPlanBuilder(workbook.metadata, workbook.defaultStyle, workbook.styles);
 
   for (const sheet of workbook.sheets) {
     builder.addSheet(sheet.id, sheet.name);
@@ -443,7 +443,7 @@ function isFormulaObject(value: unknown): value is FormulaDefinition {
 type TableColumnNode = Extract<Block, { type: 'table' }>['columns'][number];
 type TableLeafColumn = TableColumnNode & { children?: undefined };
 
-function flattenColumns(columns: TableColumnNode[]): TableLeafColumn[] {
+function flattenColumns(columns: readonly TableColumnNode[]): TableLeafColumn[] {
   return columns.flatMap((column) => {
     if (column.children && column.children.length > 0) {
       return flattenColumns(column.children);
@@ -453,7 +453,7 @@ function flattenColumns(columns: TableColumnNode[]): TableLeafColumn[] {
   });
 }
 
-function calculateTableHeaderDepth(columns: TableColumnNode[]): number {
+function calculateTableHeaderDepth(columns: readonly TableColumnNode[]): number {
   return Math.max(
     ...columns.map((column) => {
       if (column.children && column.children.length > 0) {
@@ -495,7 +495,7 @@ export {
   createFormulaKey,
   formatCellAddress,
   formatCellReference,
-  isFormulaDefinition
+  isFormulaDefinition,
 } from './formula-engine';
 export { LayoutCursor } from './layout-cursor';
 export { assertMergeDoesNotOverlap, normalizeMergeRange } from './merge-engine';
@@ -506,8 +506,7 @@ export type { BlockCompiler, BlockCompilerRegistry, SheetContext } from './block
 export type {
   CellAddress,
   FormulaCompileContext,
-  FormulaCompileContextOptions
+  FormulaCompileContextOptions,
 } from './formula-engine';
 export type { MergeRange } from './merge-engine';
 export type { RenderContext, VariableScope } from './variable-engine';
-

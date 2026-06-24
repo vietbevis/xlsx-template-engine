@@ -1,8 +1,7 @@
+import type ExcelJS from 'exceljs';
 import { ReportEngineError } from '../core/errors';
 import type {
   Block,
-  BorderLineStyle,
-  BorderStyleDefinition,
   CellContent,
   CellStyleDefinition,
   FormulaRangeScope,
@@ -291,6 +290,13 @@ function compileTableBlock(
     compileTableTitleRow(titleRow, context, cursor, builder, tableWidth, variables);
   }
 
+  for (const [rowOffset, height] of (block.headerRowHeights ?? []).entries()) {
+    builder.setRowHeight(context.sheet.id, {
+      row: cursor.row + rowOffset,
+      height,
+    });
+  }
+
   for (const headerCell of headerCells) {
     builder.addCell(context.sheet.id, {
       row: cursor.row + headerCell.rowOffset,
@@ -362,6 +368,7 @@ function compileTableBlock(
       variables,
       block.bodyStyle,
       tableInlineStyle,
+      block.bodyRowHeight,
     );
     const renderedRow = {
       data: item as Record<string, unknown>,
@@ -421,6 +428,7 @@ function compileTableDataRows(
   variables: VariableScope,
   bodyStyle?: StyleValue,
   inlineStyle?: CellStyleDefinition,
+  bodyRowHeight?: number,
 ): void {
   for (const rowData of rows) {
     const absoluteRow = cursor.row;
@@ -444,6 +452,13 @@ function compileTableDataRows(
       });
     }
 
+    if (bodyRowHeight !== undefined) {
+      builder.setRowHeight(context.sheet.id, {
+        row: absoluteRow,
+        height: bodyRowHeight,
+      });
+    }
+
     cursor.advanceRows();
   }
 }
@@ -458,6 +473,7 @@ function compileTableDataRow(
   variables: VariableScope,
   bodyStyle?: StyleValue,
   inlineStyle?: CellStyleDefinition,
+  bodyRowHeight?: number,
 ): void {
   compileTableDataRows(
     [rowData],
@@ -469,6 +485,7 @@ function compileTableDataRow(
     variables,
     bodyStyle,
     inlineStyle,
+    bodyRowHeight,
   );
 }
 
@@ -594,7 +611,7 @@ function createTableInlineStyle(
   };
 }
 
-function createAllSidesBorder(style: BorderLineStyle): BorderStyleDefinition {
+function createAllSidesBorder(style: ExcelJS.BorderStyle): Partial<ExcelJS.Borders> {
   return {
     top: { style },
     right: { style },
@@ -936,7 +953,7 @@ interface HeaderMatrixCell {
 type TableColumnNode = Extract<Block, { type: 'table' }>['columns'][number];
 type TableLeafColumn = TableColumnNode & { children?: undefined };
 
-function calculateHeaderDepth(columns: TableColumnNode[]): number {
+function calculateHeaderDepth(columns: readonly TableColumnNode[]): number {
   return Math.max(
     ...columns.map((column) => {
       if (column.children && column.children.length > 0) {
@@ -948,7 +965,7 @@ function calculateHeaderDepth(columns: TableColumnNode[]): number {
   );
 }
 
-function flattenLeafColumns(columns: TableColumnNode[]): TableLeafColumn[] {
+function flattenLeafColumns(columns: readonly TableColumnNode[]): TableLeafColumn[] {
   return columns.flatMap((column) => {
     if (column.children && column.children.length > 0) {
       return flattenLeafColumns(column.children);
@@ -958,7 +975,10 @@ function flattenLeafColumns(columns: TableColumnNode[]): TableLeafColumn[] {
   });
 }
 
-function buildHeaderMatrix(columns: TableColumnNode[], headerDepth: number): HeaderMatrixCell[] {
+function buildHeaderMatrix(
+  columns: readonly TableColumnNode[],
+  headerDepth: number,
+): HeaderMatrixCell[] {
   const cells: HeaderMatrixCell[] = [];
   let columnOffset = 0;
 
@@ -1014,7 +1034,7 @@ function getChildrenRowOffset(column: TableColumnNode): number {
   return column.childrenRowOffset ?? 1;
 }
 
-function countLeafColumns(columns: TableColumnNode[]): number {
+function countLeafColumns(columns: readonly TableColumnNode[]): number {
   return columns.reduce((total, column) => {
     if (column.children && column.children.length > 0) {
       return total + countLeafColumns(column.children);

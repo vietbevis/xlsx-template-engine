@@ -1,21 +1,6 @@
 import { ReportEngineError } from './errors';
 import type { WorkbookDefinition } from './types';
 
-const BORDER_LINE_STYLES = new Set([
-  'thin',
-  'dotted',
-  'hair',
-  'medium',
-  'double',
-  'thick',
-  'dashDot',
-  'dashDotDot',
-  'slantDashDot',
-  'mediumDashed',
-  'mediumDashDotDot',
-  'mediumDashDot',
-]);
-
 export function validateWorkbookDefinition(workbook: WorkbookDefinition): void {
   if (!isPlainObject(workbook)) {
     throw new ReportEngineError('Workbook definition must be an object.');
@@ -29,6 +14,7 @@ export function validateWorkbookDefinition(workbook: WorkbookDefinition): void {
     throw new ReportEngineError('Workbook definition must include at least one sheet.');
   }
 
+  validateStyleObject(workbook.defaultStyle, 'Workbook defaultStyle');
   validateStyleRegistry(workbook.styles);
 
   const sheetIds = new Set<string>();
@@ -92,20 +78,16 @@ function validateBlock(
 
   switch (blockType) {
     case 'title':
-      validateBlockText(block.text, `Block ${blockIndex} in sheet "${sheetId}" title text`);
-      validateBlockHeight(block.height, `Block ${blockIndex} in sheet "${sheetId}" title height`);
-      validateStyleReference(block.style, styles, `Block ${blockIndex} in sheet "${sheetId}"`);
+      validateTextBlock(block, `Block ${blockIndex} in sheet "${sheetId}" title`, styles);
       return;
     case 'text':
-      validateBlockText(block.text, `Block ${blockIndex} in sheet "${sheetId}" text`);
-      validateBlockHeight(block.height, `Block ${blockIndex} in sheet "${sheetId}" text height`);
-      validateStyleReference(block.style, styles, `Block ${blockIndex} in sheet "${sheetId}"`);
+      validateTextBlock(block, `Block ${blockIndex} in sheet "${sheetId}" text`, styles);
       return;
     case 'spacer':
       if (block.rows !== undefined) {
         const rows = block.rows;
 
-        if (!Number.isInteger(rows) || typeof rows !== 'number' || rows < 1) {
+        if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
           throw new ReportEngineError(
             `Block ${blockIndex} in sheet "${sheetId}" spacer rows must be a positive integer.`,
           );
@@ -139,9 +121,25 @@ function validateTableBlock(
     throw new ReportEngineError(`${label} data must be an array or async iterable.`);
   }
 
+  if (block.headerRowHeights !== undefined) {
+    if (!Array.isArray(block.headerRowHeights)) {
+      throw new ReportEngineError(`${label} headerRowHeights must be an array.`);
+    }
+
+    const headerDepth = calculateTableHeaderDepth(block.columns);
+
+    if (block.headerRowHeights.length > headerDepth) {
+      throw new ReportEngineError(`${label} headerRowHeights must not exceed header row count.`);
+    }
+
+    for (const [rowIndex, height] of block.headerRowHeights.entries()) {
+      validatePositiveNumber(height, `${label} headerRowHeights ${rowIndex}`);
+    }
+  }
+
+  validatePositiveNumber(block.bodyRowHeight, `${label} bodyRowHeight`);
   validateStyleReference(block.headerStyle, styles, `${label} headerStyle`);
   validateStyleReference(block.bodyStyle, styles, `${label} bodyStyle`);
-  validateTableBorderDefinition(block.border, `${label} border`);
 
   if (block.titleRows !== undefined) {
     if (!Array.isArray(block.titleRows)) {
@@ -176,7 +174,7 @@ function validateTableTitleRow(
   }
 
   validateCellContent(row.value, `${label} value`);
-  validateBlockHeight(row.height, `${label} height`);
+  validatePositiveNumber(row.height, `${label} height`);
   validateStyleReference(row.style, styles, label);
 }
 
@@ -189,7 +187,7 @@ function validateTableSectionRow(
     throw new ReportEngineError(`${label} must be an object.`);
   }
 
-  validateBlockHeight(row.height, `${label} height`);
+  validatePositiveNumber(row.height, `${label} height`);
   validateStyleReference(row.style, styles, label);
 
   if (row.resetRows !== undefined && typeof row.resetRows !== 'boolean') {
@@ -292,6 +290,25 @@ function validateTableColumn(
   validateStyleReference(column.bodyStyle, styles, `${label} bodyStyle`);
 }
 
+function calculateTableHeaderDepth(columns: unknown[]): number {
+  return Math.max(
+    ...columns.map((column) => {
+      if (
+        !isPlainObject(column) ||
+        !Array.isArray(column.children) ||
+        column.children.length === 0
+      ) {
+        return 1;
+      }
+
+      const childrenRowOffset =
+        typeof column.childrenRowOffset === 'number' ? column.childrenRowOffset : 1;
+
+      return childrenRowOffset + calculateTableHeaderDepth(column.children);
+    }),
+  );
+}
+
 function validateGridBlock(
   block: Record<string, unknown>,
   sheetId: string,
@@ -311,7 +328,7 @@ function validateGridBlock(
       );
     }
 
-    validateBlockHeight(
+    validatePositiveNumber(
       row.height,
       `Grid row ${rowIndex} in block ${blockIndex} of sheet "${sheetId}" height`,
     );
@@ -368,23 +385,7 @@ function validateStyleRegistry(styles: unknown): void {
       throw new ReportEngineError('Workbook style names must be non-empty.');
     }
 
-    validateStyleDefinition(style, `Style "${styleName}"`);
-
-    if (
-      isPlainObject(style) &&
-      style.extends !== undefined &&
-      (typeof style.extends !== 'string' || style.extends.trim() === '')
-    ) {
-      throw new ReportEngineError(`Style "${styleName}" extends must be a non-empty string.`);
-    }
-
-    if (
-      isPlainObject(style) &&
-      typeof style.extends === 'string' &&
-      !Object.prototype.hasOwnProperty.call(styles, style.extends)
-    ) {
-      throw new ReportEngineError(`Style "${styleName}" extends unknown style "${style.extends}".`);
-    }
+    validateStyleObject(style, `Style "${styleName}"`);
   }
 }
 
@@ -398,7 +399,10 @@ function validateStyleReference(
   }
 
   if (typeof styleValue !== 'string') {
-    validateStyleDefinition(styleValue, `${label} style`);
+    if (!isPlainObject(styleValue)) {
+      throw new ReportEngineError(`${label} style must be a non-empty string or style object.`);
+    }
+
     return;
   }
 
@@ -411,77 +415,27 @@ function validateStyleReference(
   }
 }
 
-function validateStyleDefinition(style: unknown, label: string): void {
+function validateStyleObject(style: unknown, label: string): void {
+  if (style === undefined) {
+    return;
+  }
+
   if (!isPlainObject(style)) {
     throw new ReportEngineError(`${label} must be an object.`);
   }
-
-  if (
-    style.extends !== undefined &&
-    (typeof style.extends !== 'string' || style.extends.trim() === '')
-  ) {
-    throw new ReportEngineError(`${label} extends must be a non-empty string.`);
-  }
 }
 
-function validateBorderStyle(border: unknown, label: string): void {
-  if (!isPlainObject(border)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+function validateTextBlock(
+  block: Record<string, unknown>,
+  label: string,
+  styles: WorkbookDefinition['styles'],
+): void {
+  if (typeof block.text !== 'string') {
+    throw new ReportEngineError(`${label} text must be a string.`);
   }
 
-  for (const side of ['top', 'right', 'bottom', 'left']) {
-    if (border[side] !== undefined) validateBorderSideStyle(border[side], `${label} ${side}`);
-  }
-}
-
-function validateTableBorderDefinition(value: unknown, label: string): void {
-  if (value === undefined) {
-    return;
-  }
-
-  if (typeof value === 'string') {
-    if (!BORDER_LINE_STYLES.has(value)) {
-      throw new ReportEngineError(`${label} style is not supported.`);
-    }
-
-    return;
-  }
-
-  validateBorderStyle(value, label);
-}
-
-function validateBorderSideStyle(side: unknown, label: string): void {
-  if (!isPlainObject(side)) {
-    throw new ReportEngineError(`${label} must be an object.`);
-  }
-
-  if (typeof side.style !== 'string' || !BORDER_LINE_STYLES.has(side.style)) {
-    throw new ReportEngineError(`${label} style is not supported.`);
-  }
-
-  if (side.color !== undefined) validateColor(side.color, `${label} color`);
-}
-
-function validateColor(color: unknown, label: string): void {
-  if (!isPlainObject(color)) {
-    throw new ReportEngineError(`${label} must be an object.`);
-  }
-
-  if (typeof color.argb !== 'string' || !/^[0-9A-Fa-f]{8}$/.test(color.argb)) {
-    throw new ReportEngineError(`${label} argb must be an 8-character hex string.`);
-  }
-}
-
-function validateBlockText(value: unknown, label: string): void {
-  if (typeof value === 'string') {
-    return;
-  }
-
-  throw new ReportEngineError(`${label} must be a string.`);
-}
-
-function validateBlockHeight(value: unknown, label: string): void {
-  validatePositiveNumber(value, label);
+  validatePositiveNumber(block.height, `${label} height`);
+  validateStyleReference(block.style, styles, label);
 }
 
 function validatePositiveInteger(value: unknown, label: string): void {
@@ -489,7 +443,7 @@ function validatePositiveInteger(value: unknown, label: string): void {
     return;
   }
 
-  if (!Number.isInteger(value) || typeof value !== 'number' || value < 1) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
     throw new ReportEngineError(`${label} must be a positive integer.`);
   }
 }
@@ -520,7 +474,11 @@ function validateCellContent(value: unknown, label: string): void {
     return;
   }
 
-  throw new ReportEngineError(`${label} must be a valid cell value or formula definition.`);
+  if (isPlainObject(value)) {
+    return;
+  }
+
+  throw new ReportEngineError(`${label} must be a valid ExcelJS cell value or formula definition.`);
 }
 
 function validateFormulaDefinition(value: Record<string, unknown>, label: string): void {
@@ -572,7 +530,7 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
     case 'round':
       validateNestedFormulaDefinition(value.value, `${label} round formula value`);
 
-      if (!Number.isInteger(value.digits) || typeof value.digits !== 'number' || value.digits < 0) {
+      if (typeof value.digits !== 'number' || !Number.isInteger(value.digits) || value.digits < 0) {
         throw new ReportEngineError(
           `${label} round formula digits must be a non-negative integer.`,
         );

@@ -12,10 +12,10 @@ type FormulaDefinition =
   | { type: "literal"; value: string | number | boolean | null }
   | { type: "ref"; key: string }
   | { type: "range"; startKey: string; endKey: string }
-  | { type: "sum"; range?: { startKey: string; endKey: string }; values?: FormulaDefinition[] }
+  | { type: "sum"; range?: { startKey: string; endKey: string }; values?: readonly FormulaDefinition[] }
   | { type: "round"; value: FormulaDefinition; digits: number }
   | { type: "if"; condition: FormulaDefinition; whenTrue: FormulaDefinition; whenFalse: FormulaDefinition }
-  | { type: "call"; name: string; args: FormulaDefinition[] }
+  | { type: "call"; name: string; args: readonly FormulaDefinition[] }
   | { type: "binary"; operator: FormulaBinaryOperator; left: FormulaDefinition; right: FormulaDefinition };
 ```
 

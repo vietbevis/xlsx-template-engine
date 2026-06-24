@@ -21,6 +21,7 @@ export class RenderPlanBuilder {
 
   constructor(
     private readonly metadata?: WorkbookMetadata,
+    private readonly defaultStyle?: CellStyleDefinition,
     private readonly styles?: StyleRegistry,
   ) {}
 
@@ -100,6 +101,7 @@ export class RenderPlanBuilder {
             keywords: this.metadata.keywords ? [...this.metadata.keywords] : undefined,
           }
         : undefined,
+      defaultStyle: this.defaultStyle ? cloneStyle(this.defaultStyle) : undefined,
       styles: this.styles ? resolveStyleRegistry(this.styles) : undefined,
       sheets: Array.from(this.sheets.values()).map((sheet) => ({
         id: sheet.id,
@@ -151,81 +153,9 @@ function assertPositiveInteger(value: number, label: string): void {
 }
 
 function resolveStyleRegistry(styles: StyleRegistry): StyleRegistry {
-  const resolved = new Map<string, CellStyleDefinition>();
-
-  for (const styleName of Object.keys(styles)) {
-    resolved.set(styleName, resolveStyle(styleName, styles, resolved, new Set()));
-  }
-
-  return Object.fromEntries(resolved.entries());
-}
-
-function resolveStyle(
-  styleName: string,
-  styles: StyleRegistry,
-  resolved: Map<string, CellStyleDefinition>,
-  visiting: Set<string>,
-): CellStyleDefinition {
-  const existing = resolved.get(styleName);
-
-  if (existing) {
-    return existing;
-  }
-
-  const style = styles[styleName];
-
-  if (!style) {
-    throw new ReportEngineError(`Style "${styleName}" does not exist.`);
-  }
-
-  if (visiting.has(styleName)) {
-    throw new ReportEngineError(`Style "${styleName}" has a circular extends chain.`);
-  }
-
-  visiting.add(styleName);
-
-  const parentStyle = style.extends
-    ? resolveStyle(style.extends, styles, resolved, visiting)
-    : undefined;
-  const mergedStyle = mergeStyles(parentStyle, style);
-
-  visiting.delete(styleName);
-  resolved.set(styleName, mergedStyle);
-
-  return mergedStyle;
-}
-
-function mergeStyles(
-  parent: CellStyleDefinition | undefined,
-  style: CellStyleDefinition,
-): CellStyleDefinition {
-  const mergedStyle = mergeNested(parent, style) ?? {};
-  delete mergedStyle.extends;
-  return mergedStyle;
-}
-
-function mergeNested<T extends Record<string, unknown>>(
-  parent: T | undefined,
-  child: T | undefined,
-): T | undefined {
-  if (!parent && !child) {
-    return undefined;
-  }
-
-  const merged: Record<string, unknown> = { ...(parent ?? {}) };
-
-  for (const [key, value] of Object.entries(child ?? {})) {
-    const parentValue = merged[key];
-
-    if (isPlainObject(parentValue) && isPlainObject(value)) {
-      merged[key] = mergeNested(parentValue, value);
-      continue;
-    }
-
-    merged[key] = cloneStylePart(value);
-  }
-
-  return merged as T;
+  return Object.fromEntries(
+    Object.entries(styles).map(([styleName, style]) => [styleName, cloneStyle(style)]),
+  );
 }
 
 function cloneStyleValue(style: StyleValue | undefined): StyleValue | undefined {

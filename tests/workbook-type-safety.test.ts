@@ -81,6 +81,44 @@ const validSummaryFormula: TypedFormulaDefinition<Workbook, "summary"> = {
 
 void validSummaryFormula;
 
+const readonlyWorkbook = defineWorkbook({
+  styles: {
+    money: { numFmt: "#,##0" },
+  },
+  sheets: [
+    {
+      id: "readonly_summary",
+      name: "Readonly Summary",
+      blocks: [
+        {
+          type: "grid",
+          rows: [
+            {
+              cells: [
+                { key: "base", value: 10 },
+                { key: "bonus", value: 5 },
+                {
+                  key: "total",
+                  value: {
+                    type: "sum",
+                    values: [
+                      { type: "ref", key: "base" },
+                      { type: "ref", key: "bonus" },
+                    ],
+                  },
+                  style: "money",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+} as const);
+
+void readonlyWorkbook;
+
 defineWorkbook({
   sheets: [
     {

@@ -3,7 +3,7 @@ import type { SheetDefinition } from './types';
 
 export type SheetRegistry = ReadonlyMap<string, SheetDefinition>;
 
-export function createSheetRegistry(sheets: SheetDefinition[]): SheetRegistry {
+export function createSheetRegistry(sheets: readonly SheetDefinition[]): SheetRegistry {
   const registry = new Map<string, SheetDefinition>();
 
   for (const sheet of sheets) {

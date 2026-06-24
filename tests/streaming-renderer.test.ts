@@ -20,7 +20,7 @@ function createLargeTableWorkbook(rowCount: number) {
   return defineWorkbook({
     styles: {
       number: {
-        numberFormat: "#,##0",
+        numFmt: "#,##0",
       },
     },
     sheets: [

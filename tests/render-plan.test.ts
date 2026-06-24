@@ -74,19 +74,16 @@ assert.equal(blockPlan.sheets[0]?.rows[0]?.cells[0]?.style, "title");
 assert.equal(blockPlan.sheets[0]?.rows[1]?.index, 4);
 assert.equal(blockPlan.sheets[0]?.rows[1]?.cells[0]?.value, "After spacer");
 
-const inheritedStyleWorkbook = defineWorkbook({
+const styleWorkbook = defineWorkbook({
   styles: {
-    bordered: {
+    amount: {
       border: {
         top: { style: "thin" },
         left: { style: "thin" },
         bottom: { style: "thin" },
         right: { style: "thin" },
       },
-    },
-    amount: {
-      extends: "bordered",
-      numberFormat: "#,##0",
+      numFmt: "#,##0",
       alignment: { horizontal: "right" },
     },
   },
@@ -99,8 +96,8 @@ const inheritedStyleWorkbook = defineWorkbook({
   ],
 });
 
-const inheritedStylePlan = compileWorkbookToRenderPlan(inheritedStyleWorkbook);
-assert.deepEqual(inheritedStylePlan.styles?.amount, {
+const stylePlan = compileWorkbookToRenderPlan(styleWorkbook);
+assert.deepEqual(stylePlan.styles?.amount, {
   border: {
     top: { style: "thin" },
     left: { style: "thin" },
@@ -108,7 +105,7 @@ assert.deepEqual(inheritedStylePlan.styles?.amount, {
     right: { style: "thin" },
   },
   alignment: { horizontal: "right" },
-  numberFormat: "#,##0",
+  numFmt: "#,##0",
 });
 
 assert.throws(
@@ -123,29 +120,6 @@ assert.throws(
       ],
     }),
   /references unknown style "missing"/,
-);
-
-assert.throws(
-  () =>
-    defineWorkbook({
-      styles: {
-        child: { extends: "missing" },
-      },
-      sheets: [{ id: "summary", name: "Summary", blocks: [] }],
-    }),
-  /extends unknown style "missing"/,
-);
-
-assert.throws(
-  () =>
-    compileWorkbookToRenderPlan({
-      styles: {
-        a: { extends: "b" },
-        b: { extends: "a" },
-      },
-      sheets: [{ id: "summary", name: "Summary", blocks: [] }],
-    }),
-  /circular extends chain/,
 );
 
 assert.throws(

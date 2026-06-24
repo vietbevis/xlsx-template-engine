@@ -22,7 +22,7 @@ Them examples chay bang `tsx`:
   - no auto-generated columns
   - no auto width
   - no auto height
-  - no direct ExcelJS public API
+  - ExcelJS primitives are reused directly for workbook values/styles where useful
 
 ## Tests
 

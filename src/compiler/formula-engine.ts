@@ -168,7 +168,7 @@ export function formatCellReference(address: CellAddress, currentSheetId?: strin
 
 function compileSumArguments(
   range: FormulaRangeReference | undefined,
-  values: FormulaDefinition[] | undefined,
+  values: readonly FormulaDefinition[] | undefined,
   context: FormulaCompileContext | undefined,
 ): string {
   const args = [

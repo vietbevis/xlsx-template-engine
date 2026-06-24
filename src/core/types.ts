@@ -1,4 +1,6 @@
-export type CellValue = string | number | boolean | Date | null;
+import type ExcelJS from 'exceljs';
+
+export type CellValue = Exclude<ExcelJS.CellValue, undefined>;
 
 export type CellContent = CellValue | FormulaDefinition;
 
@@ -26,7 +28,7 @@ export interface LiteralFormulaDefinition {
 export interface SumFormulaDefinition {
   type: 'sum';
   range?: FormulaRangeReference;
-  values?: FormulaDefinition[];
+  values?: readonly FormulaDefinition[];
 }
 
 export interface RoundFormulaDefinition {
@@ -45,7 +47,7 @@ export interface IfFormulaDefinition {
 export interface CallFormulaDefinition {
   type: 'call';
   name: string;
-  args: FormulaDefinition[];
+  args: readonly FormulaDefinition[];
 }
 
 export interface BinaryFormulaDefinition {
@@ -88,109 +90,7 @@ export interface StyleReference {
   style?: StyleValue;
 }
 
-export interface CellStyleDefinition {
-  extends?: string;
-  [key: string]: unknown;
-  font?: FontStyleDefinition;
-  fill?: FillStyleDefinition;
-  border?: BorderStyleDefinition;
-  alignment?: AlignmentStyleDefinition;
-  numFmt?: string;
-  numberFormat?: string;
-  protection?: Record<string, unknown>;
-}
-
-export interface FontStyleDefinition {
-  [key: string]: unknown;
-  name?: string;
-  size?: number;
-  bold?: boolean;
-  italic?: boolean;
-  underline?: boolean;
-  color?: ColorStyleDefinition;
-}
-
-export interface FillStyleDefinition {
-  [key: string]: unknown;
-  type?: string;
-  pattern?: FillPatternStyle;
-  fgColor?: ColorStyleDefinition;
-  bgColor?: ColorStyleDefinition;
-  foregroundColor?: ColorStyleDefinition;
-  backgroundColor?: ColorStyleDefinition;
-}
-
-export interface BorderStyleDefinition {
-  [key: string]: unknown;
-  top?: BorderSideStyleDefinition;
-  right?: BorderSideStyleDefinition;
-  bottom?: BorderSideStyleDefinition;
-  left?: BorderSideStyleDefinition;
-}
-
-export interface BorderSideStyleDefinition {
-  [key: string]: unknown;
-  style: BorderLineStyle;
-  color?: ColorStyleDefinition;
-}
-
-export interface AlignmentStyleDefinition {
-  [key: string]: unknown;
-  horizontal?: HorizontalAlignmentStyle;
-  vertical?: VerticalAlignmentStyle;
-  wrapText?: boolean;
-}
-
-export interface ColorStyleDefinition {
-  [key: string]: unknown;
-  argb: string;
-}
-
-export type FillPatternStyle =
-  | 'none'
-  | 'solid'
-  | 'darkVertical'
-  | 'darkHorizontal'
-  | 'darkGrid'
-  | 'darkTrellis'
-  | 'darkDown'
-  | 'darkUp'
-  | 'lightVertical'
-  | 'lightHorizontal'
-  | 'lightGrid'
-  | 'lightTrellis'
-  | 'lightDown'
-  | 'lightUp'
-  | 'darkGray'
-  | 'mediumGray'
-  | 'lightGray'
-  | 'gray125'
-  | 'gray0625';
-
-export type BorderLineStyle =
-  | 'thin'
-  | 'dotted'
-  | 'hair'
-  | 'medium'
-  | 'double'
-  | 'thick'
-  | 'dashDot'
-  | 'dashDotDot'
-  | 'slantDashDot'
-  | 'mediumDashed'
-  | 'mediumDashDotDot'
-  | 'mediumDashDot';
-
-export type HorizontalAlignmentStyle =
-  | 'left'
-  | 'center'
-  | 'right'
-  | 'fill'
-  | 'justify'
-  | 'centerContinuous'
-  | 'distributed';
-
-export type VerticalAlignmentStyle = 'top' | 'middle' | 'bottom' | 'distributed' | 'justify';
+export type CellStyleDefinition = Partial<ExcelJS.Style>;
 
 export interface WorkbookMetadata {
   title?: string;
@@ -202,19 +102,20 @@ export interface WorkbookMetadata {
 
 export interface WorkbookDefinition {
   metadata?: WorkbookMetadata;
+  defaultStyle?: CellStyleDefinition;
   styles?: StyleRegistry;
   context?: Record<string, unknown>;
-  sheets: SheetDefinition[];
+  sheets: readonly SheetDefinition[];
 }
 
 export interface SheetDefinition {
   id: string;
   name: string;
   context?: Record<string, unknown>;
-  blocks: Block[];
+  blocks: readonly Block[];
 }
 
-export type Block = TitleBlock | TextBlock | SpacerBlock | GridBlock | TableBlock<any>;
+export type Block = TitleBlock | TextBlock | SpacerBlock | GridBlock | TableBlock;
 
 export interface BaseBlock {
   type: string;
@@ -240,12 +141,12 @@ export interface SpacerBlock extends BaseBlock {
 
 export interface GridBlock extends BaseBlock {
   type: 'grid';
-  rows: GridRow[];
+  rows: readonly GridRow[];
 }
 
 export interface GridRow {
   height?: number;
-  cells: GridCell[];
+  cells: readonly GridCell[];
 }
 
 export interface GridCell extends StyleReference {
@@ -258,15 +159,17 @@ export interface GridCell extends StyleReference {
 
 export interface TableBlock<Row = Record<string, unknown>> extends BaseBlock {
   type: 'table';
-  columns: TableColumn<Row>[];
-  data: TableDataItem<Row>[] | AsyncIterable<TableDataItem<Row>>;
-  titleRows?: TableTitleRow[];
+  columns: readonly TableColumn<Row>[];
+  data: readonly TableDataItem<Row>[] | AsyncIterable<TableDataItem<Row>>;
+  titleRows?: readonly TableTitleRow[];
+  headerRowHeights?: readonly number[];
+  bodyRowHeight?: number;
   headerStyle?: StyleValue;
   bodyStyle?: StyleValue;
   border?: TableBorderDefinition;
 }
 
-export type TableBorderDefinition = BorderLineStyle | BorderStyleDefinition;
+export type TableBorderDefinition = ExcelJS.BorderStyle | Partial<ExcelJS.Borders>;
 
 export type TableDataItem<Row = Record<string, unknown>> = Row | TableSectionRow<Row>;
 
@@ -279,7 +182,7 @@ export interface TableSectionRow<Row = Record<string, unknown>> extends StyleRef
   type: 'section';
   resetRows?: boolean;
   height?: number;
-  cells: TableSectionCell<Row>[];
+  cells: readonly TableSectionCell<Row>[];
 }
 
 export interface TableSectionCell<Row = Record<string, unknown>> extends StyleReference {
@@ -305,7 +208,7 @@ export interface TableColumn<Row = Record<string, unknown>> extends StyleReferen
   title: string;
   key?: keyof Row;
   accessor?: (row: Row) => CellContent;
-  children?: TableColumn<Row>[];
+  children?: readonly TableColumn<Row>[];
   childrenRowOffset?: number;
   width?: number;
   headerStyle?: StyleValue;
@@ -385,7 +288,7 @@ type TypedTableBlock<
     TSheet,
     TRow,
     TBlock['columns'],
-    TableColumnKeys<TBlock['columns']>
+    TableColumnKeys<TRow, TBlock['columns']>
   >;
 };
 
@@ -393,7 +296,7 @@ type TypedTableColumns<
   TWorkbook extends WorkbookDefinition,
   TSheet extends SheetDefinition,
   TRow,
-  TColumns extends TableColumn<TRow>[],
+  TColumns extends readonly TableColumn<TRow>[],
   TAllKeys extends string,
 > = {
   [TIndex in keyof TColumns]: TColumns[TIndex] extends TableColumn<TRow>
@@ -407,7 +310,7 @@ type TypedTableColumn<
   TRow,
   TColumn extends TableColumn<TRow>,
   TAllKeys extends string,
-> = TColumn extends { children: TableColumn<TRow>[] }
+> = TColumn extends { children: readonly TableColumn<TRow>[] }
   ? Omit<TColumn, 'children'> & {
       children: TypedTableColumns<TWorkbook, TSheet, TRow, TColumn['children'], TAllKeys>;
     }
@@ -499,7 +402,7 @@ type TypedSumFormulaDefinition<
 > = {
   type: 'sum';
   range?: TypedFormulaRangeReference<TWorkbook, TCurrentSheetId, TLocalKeys>;
-  values?: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
+  values?: readonly TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
 };
 
 type TypedRoundFormulaDefinition<
@@ -530,7 +433,7 @@ type TypedCallFormulaDefinition<
 > = {
   type: 'call';
   name: string;
-  args: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
+  args: readonly TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
 };
 
 type TypedBinaryFormulaDefinition<
@@ -574,10 +477,13 @@ type GridBlockKeys<TBlock extends GridBlock> =
       : never
     : never;
 
-type TableColumnKeys<TColumns extends TableColumn<any>[]> = TColumns[number] extends infer TColumn
-  ? TColumn extends TableColumn<any>
-    ? TColumn extends { children: TableColumn<any>[] }
-      ? TableColumnKeys<TColumn['children']>
+type TableColumnKeys<
+  TRow,
+  TColumns extends readonly TableColumn<TRow>[],
+> = TColumns[number] extends infer TColumn
+  ? TColumn extends TableColumn<TRow>
+    ? TColumn extends { children: readonly TableColumn<TRow>[] }
+      ? TableColumnKeys<TRow, TColumn['children']>
       : TColumn extends { key: infer TKey }
         ? Extract<TKey, string>
         : never

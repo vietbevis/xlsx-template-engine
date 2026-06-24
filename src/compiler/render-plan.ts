@@ -8,6 +8,7 @@ import type {
 
 export interface RenderPlan {
   metadata?: WorkbookMetadata;
+  defaultStyle?: CellStyleDefinition;
   styles?: StyleRegistry;
   sheets: RenderPlanSheet[];
 }

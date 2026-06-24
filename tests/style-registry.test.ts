@@ -5,6 +5,12 @@ import { ReportEngineError, defineWorkbook, renderWorkbook } from '../src';
 import { ExcelJsWorkbookAdapter } from '../src/adapters/exceljs/workbook-adapter';
 
 const workbook = defineWorkbook({
+  defaultStyle: {
+    font: {
+      name: 'Times New Roman',
+      size: 12,
+    },
+  },
   styles: {
     title: {
       font: {
@@ -14,8 +20,9 @@ const workbook = defineWorkbook({
         color: { argb: 'FF1F4E78' },
       },
       fill: {
+        type: 'pattern',
         pattern: 'solid',
-        foregroundColor: { argb: 'FFD9EAF7' },
+        fgColor: { argb: 'FFD9EAF7' },
       },
       border: {
         bottom: {
@@ -28,7 +35,7 @@ const workbook = defineWorkbook({
         vertical: 'middle',
         wrapText: true,
       },
-      numberFormat: '@',
+      numFmt: '@',
     },
   },
   sheets: [
@@ -41,6 +48,12 @@ const workbook = defineWorkbook({
 });
 
 const directColumnStyleWorkbook = defineWorkbook({
+  defaultStyle: {
+    font: {
+      name: 'Times New Roman',
+      size: 12,
+    },
+  },
   sheets: [
     {
       id: 'direct_column_style',
@@ -134,10 +147,14 @@ export async function runStyleRegistryTest(): Promise<void> {
 
   const directSheet = directRenderedWorkbook.getWorksheet('Direct Column Style');
   assert.equal(directSheet.getCell('A1').font.bold, true);
+  assert.equal(directSheet.getCell('A1').font.name, 'Times New Roman');
+  assert.equal(directSheet.getCell('A1').font.size, 12);
   assert.equal(directSheet.getCell('A1').font.family, 4);
   assert.equal(directSheet.getCell('A1').fill.type, 'pattern');
   assert.equal(directSheet.getCell('A1').fill.fgColor?.argb, 'FFE2F0D9');
   assert.equal(directSheet.getCell('B2').numFmt, '#,##0');
+  assert.equal(directSheet.getCell('B2').font.name, 'Times New Roman');
+  assert.equal(directSheet.getCell('B2').font.size, 12);
   assert.equal(directSheet.getCell('B2').alignment.horizontal, 'right');
   assert.equal(directSheet.getCell('B2').alignment.vertical, 'middle');
   assert.equal(directSheet.getCell('B2').protection.locked, false);

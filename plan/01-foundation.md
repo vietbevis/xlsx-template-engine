@@ -14,7 +14,7 @@ Chuyen repo tu template filler hien tai sang nen tang thu vien report engine co 
   - `src/core`: public domain types, validators.
   - `src/compiler`: layout compiler and render-plan builder.
   - `src/renderer`: renderer facade and output APIs.
-  - `src/adapters/exceljs`: ExcelJS-specific implementation.
+  - `src/adapters/exceljs`: compatibility writer around ExcelJS streaming/non-streaming output.
   - `src/index.ts`: public exports only.
 - Loai bo public API cu dang template filler hoac de lai sau mot facade migration neu can, nhung khong de API cu dinh huong kien truc moi.
 
@@ -51,4 +51,3 @@ await renderWorkbook(workbook).writeFile("report.xlsx");
 - `npm run typecheck` pass.
 - Public API khong export truc tiep ExcelJS type.
 - Smoke test import package, tao workbook definition hop le va goi validation.
-

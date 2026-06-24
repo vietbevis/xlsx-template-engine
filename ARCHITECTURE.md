@@ -4,7 +4,7 @@ Excel Report Engine Specification
 
 Xây dựng một thư viện TypeScript chạy trên môi trường server để sinh file Excel.
 
-Thư viện sử dụng ExcelJS làm tầng render cuối cùng nhưng không phụ thuộc trực tiếp vào API của ExcelJS.
+Thư viện sử dụng ExcelJS làm lõi workbook/cell/style chính. Engine không cố định nghĩa lại các primitive mà ExcelJS đã có; phần riêng của engine chỉ nằm ở report DSL, layout block, semantic key, formula resolver và streaming workflow.
 
 Mục tiêu là xây dựng một Report Engine hoàn chỉnh, không phải một JSON-to-Excel wrapper.
 

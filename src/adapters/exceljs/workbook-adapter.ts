@@ -113,7 +113,7 @@ export class ExcelJsWorkbookAdapter {
     const style = this.resolveCellStyle(cellPlan, renderPlan);
 
     if (style) {
-      cell.style = this.normalizeCellStyle(style);
+      cell.style = cloneStylePart(style) as Partial<ExcelJS.Style>;
     }
   }
 
@@ -145,7 +145,7 @@ export class ExcelJsWorkbookAdapter {
 
       for (let row = startRow; row <= endRow; row += 1) {
         for (let column = merge.startColumn; column <= merge.endColumn; column += 1) {
-          sheet.getCell(row, column).style = this.normalizeCellStyle(style);
+          sheet.getCell(row, column).style = cloneStylePart(style) as Partial<ExcelJS.Style>;
         }
       }
     }
@@ -174,8 +174,9 @@ export class ExcelJsWorkbookAdapter {
     renderPlan: RenderPlan,
   ): CellStyleDefinition | undefined {
     const baseStyle = this.resolveStyleValue(cellPlan.style, renderPlan);
+    const style = this.mergeCellStyles(renderPlan.defaultStyle, baseStyle);
 
-    return this.mergeCellStyles(baseStyle, cellPlan.inlineStyle);
+    return this.mergeCellStyles(style, cellPlan.inlineStyle);
   }
 
   private resolveStyleValue(
@@ -233,40 +234,6 @@ export class ExcelJsWorkbookAdapter {
 
     return merged as T;
   }
-
-  private normalizeCellStyle(style: CellStyleDefinition): Partial<ExcelJS.Style> {
-    const normalized = cloneStylePart(style) as Record<string, unknown>;
-    delete normalized.extends;
-
-    if (typeof normalized.numberFormat === 'string' && normalized.numFmt === undefined) {
-      normalized.numFmt = normalized.numberFormat;
-    }
-
-    delete normalized.numberFormat;
-
-    if (isPlainObject(normalized.fill)) {
-      normalizeFillStyle(normalized.fill);
-    }
-
-    return normalized as Partial<ExcelJS.Style>;
-  }
-}
-
-function normalizeFillStyle(fill: Record<string, unknown>): void {
-  if (typeof fill.pattern === 'string' && fill.type === undefined) {
-    fill.type = 'pattern';
-  }
-
-  if (fill.foregroundColor !== undefined && fill.fgColor === undefined) {
-    fill.fgColor = fill.foregroundColor;
-  }
-
-  if (fill.backgroundColor !== undefined && fill.bgColor === undefined) {
-    fill.bgColor = fill.backgroundColor;
-  }
-
-  delete fill.foregroundColor;
-  delete fill.backgroundColor;
 }
 
 function cloneStylePart(value: unknown): unknown {
