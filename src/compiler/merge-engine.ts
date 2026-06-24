@@ -1,21 +1,18 @@
-import { ReportEngineError } from "../core/errors";
-import type { RenderMergeRange } from "./render-plan";
+import { ReportEngineError } from '../core/errors';
+import type { RenderMergeRange } from './render-plan';
 
 export interface MergeRange extends RenderMergeRange {
   sheetId: string;
 }
 
-export function normalizeMergeRange(
-  sheetId: string,
-  range: RenderMergeRange,
-): MergeRange | null {
-  assertPositiveInteger(range.startRow, "merge start row");
-  assertPositiveInteger(range.startColumn, "merge start column");
-  assertPositiveInteger(range.endRow, "merge end row");
-  assertPositiveInteger(range.endColumn, "merge end column");
+export function normalizeMergeRange(sheetId: string, range: RenderMergeRange): MergeRange | null {
+  assertPositiveInteger(range.startRow, 'merge start row');
+  assertPositiveInteger(range.startColumn, 'merge start column');
+  assertPositiveInteger(range.endRow, 'merge end row');
+  assertPositiveInteger(range.endColumn, 'merge end column');
 
   if (range.endRow < range.startRow || range.endColumn < range.startColumn) {
-    throw new ReportEngineError("Merge range end must be greater than or equal to start.");
+    throw new ReportEngineError('Merge range end must be greater than or equal to start.');
   }
 
   if (range.startRow === range.endRow && range.startColumn === range.endColumn) {
@@ -36,9 +33,7 @@ export function assertMergeDoesNotOverlap(
   existingRanges: MergeRange[],
 ): void {
   const overlappingRange = existingRanges.find(
-    (existing) =>
-      existing.sheetId === candidate.sheetId &&
-      rangesOverlap(existing, candidate),
+    (existing) => existing.sheetId === candidate.sheetId && rangesOverlap(existing, candidate),
   );
 
   if (overlappingRange) {

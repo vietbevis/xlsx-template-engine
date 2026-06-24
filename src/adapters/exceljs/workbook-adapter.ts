@@ -1,17 +1,8 @@
-import ExcelJS from "exceljs";
-import type { Writable } from "stream";
-import type {
-  RenderCell,
-  RenderPlan,
-  RenderPlanSheet,
-} from "../../compiler/render-plan";
-import { ReportEngineError } from "../../core/errors";
-import type {
-  BorderStyleDefinition,
-  CellStyleDefinition,
-  ColorStyleDefinition,
-  FillStyleDefinition,
-} from "../../core/types";
+import ExcelJS from 'exceljs';
+import type { Writable } from 'stream';
+import type { RenderCell, RenderPlan, RenderPlanSheet } from '../../compiler/render-plan';
+import { ReportEngineError } from '../../core/errors';
+import type { CellStyleDefinition, StyleValue } from '../../core/types';
 
 interface StyleableWorksheet {
   getCell(row: number, column: number): ExcelJS.Cell;
@@ -57,12 +48,7 @@ export class ExcelJsWorkbookAdapter {
       }
 
       for (const merge of sheetPlan.merges) {
-        sheet.mergeCells(
-          merge.startRow,
-          merge.startColumn,
-          merge.endRow,
-          merge.endColumn,
-        );
+        sheet.mergeCells(merge.startRow, merge.startColumn, merge.endRow, merge.endColumn);
       }
 
       for (const rowPlan of sheetPlan.rows) {
@@ -106,12 +92,7 @@ export class ExcelJsWorkbookAdapter {
       }
 
       for (const merge of sheetPlan.merges) {
-        sheet.mergeCells(
-          merge.startRow,
-          merge.startColumn,
-          merge.endRow,
-          merge.endColumn,
-        );
+        sheet.mergeCells(merge.startRow, merge.startColumn, merge.endRow, merge.endColumn);
       }
 
       this.applyMergedStyleCoverage(sheet, sheetPlan, renderPlan);
@@ -122,21 +103,17 @@ export class ExcelJsWorkbookAdapter {
 
   private applyCellPlan(
     cell: ExcelJS.Cell,
-    cellPlan: RenderPlan["sheets"][number]["rows"][number]["cells"][number],
+    cellPlan: RenderPlan['sheets'][number]['rows'][number]['cells'][number],
     renderPlan: RenderPlan,
   ): void {
     cell.value = cellPlan.formula
       ? this.createFormulaValue(cellPlan.formula, cellPlan.value)
       : (cellPlan.value ?? null);
 
-    if (cellPlan.style) {
-      const style = renderPlan.styles?.[cellPlan.style];
+    const style = this.resolveCellStyle(cellPlan, renderPlan);
 
-      if (!style) {
-        throw new ReportEngineError(`Render plan references unknown style "${cellPlan.style}".`);
-      }
-
-      cell.style = this.mapCellStyle(style);
+    if (style) {
+      cell.style = this.normalizeCellStyle(style);
     }
   }
 
@@ -151,25 +128,15 @@ export class ExcelJsWorkbookAdapter {
         continue;
       }
 
-      const masterCellPlan = this.findCellPlan(
-        sheetPlan,
-        merge.startRow,
-        merge.startColumn,
-      );
+      const masterCellPlan = this.findCellPlan(sheetPlan, merge.startRow, merge.startColumn);
 
-      if (!masterCellPlan?.style) {
+      if (!masterCellPlan?.style && !masterCellPlan?.inlineStyle) {
         continue;
       }
 
-      const style = renderPlan.styles?.[masterCellPlan.style];
+      const style = this.resolveCellStyle(masterCellPlan, renderPlan);
 
-      if (!style) {
-        throw new ReportEngineError(
-          `Render plan references unknown style "${masterCellPlan.style}".`,
-        );
-      }
-
-      if (!style.border) {
+      if (!style?.border) {
         continue;
       }
 
@@ -177,12 +144,8 @@ export class ExcelJsWorkbookAdapter {
       const endRow = rowIndex ?? merge.endRow;
 
       for (let row = startRow; row <= endRow; row += 1) {
-        for (
-          let column = merge.startColumn;
-          column <= merge.endColumn;
-          column += 1
-        ) {
-          sheet.getCell(row, column).style = this.mapCellStyle(style);
+        for (let column = merge.startColumn; column <= merge.endColumn; column += 1) {
+          sheet.getCell(row, column).style = this.normalizeCellStyle(style);
         }
       }
     }
@@ -199,64 +162,127 @@ export class ExcelJsWorkbookAdapter {
   }
 
   private createFormulaValue(formula: string, result: unknown): ExcelJS.CellValue {
-    if (typeof result === "string" || typeof result === "number" || result instanceof Date) {
+    if (typeof result === 'string' || typeof result === 'number' || result instanceof Date) {
       return { formula, result, date1904: false };
     }
 
     return { formula, date1904: false };
   }
 
-  private mapCellStyle(style: CellStyleDefinition): Partial<ExcelJS.Style> {
-    return {
-      font: style.font
-        ? {
-            name: style.font.name,
-            size: style.font.size,
-            bold: style.font.bold,
-            italic: style.font.italic,
-            underline: style.font.underline,
-            color: style.font.color ? this.mapColor(style.font.color) : undefined,
-          }
-        : undefined,
-      fill: style.fill ? this.mapFill(style.fill) : undefined,
-      border: style.border ? this.mapBorder(style.border) : undefined,
-      alignment: style.alignment
-        ? {
-            horizontal: style.alignment.horizontal,
-            vertical: style.alignment.vertical,
-            wrapText: style.alignment.wrapText,
-          }
-        : undefined,
-      numFmt: style.numberFormat,
-    };
+  private resolveCellStyle(
+    cellPlan: RenderCell,
+    renderPlan: RenderPlan,
+  ): CellStyleDefinition | undefined {
+    const baseStyle = this.resolveStyleValue(cellPlan.style, renderPlan);
+
+    return this.mergeCellStyles(baseStyle, cellPlan.inlineStyle);
   }
 
-  private mapFill(fill: FillStyleDefinition): ExcelJS.Fill {
-    return {
-      type: "pattern",
-      pattern: fill.pattern ?? "solid",
-      fgColor: fill.foregroundColor ? this.mapColor(fill.foregroundColor) : { argb: "FFFFFFFF" },
-      bgColor: fill.backgroundColor ? this.mapColor(fill.backgroundColor) : undefined,
-    };
+  private resolveStyleValue(
+    style: StyleValue | undefined,
+    renderPlan: RenderPlan,
+  ): CellStyleDefinition | undefined {
+    if (!style) {
+      return undefined;
+    }
+
+    if (typeof style !== 'string') {
+      return style;
+    }
+
+    const registryStyle = renderPlan.styles?.[style];
+
+    if (!registryStyle) {
+      throw new ReportEngineError(`Render plan references unknown style "${style}".`);
+    }
+
+    return registryStyle;
   }
 
-  private mapBorder(border: BorderStyleDefinition): Partial<ExcelJS.Borders> {
-    return {
-      top: border.top ? this.mapBorderSide(border.top) : undefined,
-      right: border.right ? this.mapBorderSide(border.right) : undefined,
-      bottom: border.bottom ? this.mapBorderSide(border.bottom) : undefined,
-      left: border.left ? this.mapBorderSide(border.left) : undefined,
-    };
+  private mergeCellStyles(
+    base: CellStyleDefinition | undefined,
+    override: CellStyleDefinition | undefined,
+  ): CellStyleDefinition | undefined {
+    if (!base && !override) {
+      return undefined;
+    }
+
+    return this.mergeStylePart(base, override) ?? {};
   }
 
-  private mapBorderSide(side: NonNullable<BorderStyleDefinition[keyof BorderStyleDefinition]>): Partial<ExcelJS.Border> {
-    return {
-      style: side.style,
-      color: side.color ? this.mapColor(side.color) : undefined,
-    };
+  private mergeStylePart<T extends Record<string, unknown>>(
+    base: T | undefined,
+    override: T | undefined,
+  ): T | undefined {
+    if (!base && !override) {
+      return undefined;
+    }
+
+    const merged: Record<string, unknown> = { ...(base ?? {}) };
+
+    for (const [key, value] of Object.entries(override ?? {})) {
+      const baseValue = merged[key];
+
+      if (isPlainObject(baseValue) && isPlainObject(value)) {
+        merged[key] = this.mergeStylePart(baseValue, value);
+        continue;
+      }
+
+      merged[key] = cloneStylePart(value);
+    }
+
+    return merged as T;
   }
 
-  private mapColor(color: ColorStyleDefinition): Partial<ExcelJS.Color> {
-    return { argb: color.argb.toUpperCase() };
+  private normalizeCellStyle(style: CellStyleDefinition): Partial<ExcelJS.Style> {
+    const normalized = cloneStylePart(style) as Record<string, unknown>;
+    delete normalized.extends;
+
+    if (typeof normalized.numberFormat === 'string' && normalized.numFmt === undefined) {
+      normalized.numFmt = normalized.numberFormat;
+    }
+
+    delete normalized.numberFormat;
+
+    if (isPlainObject(normalized.fill)) {
+      normalizeFillStyle(normalized.fill);
+    }
+
+    return normalized as Partial<ExcelJS.Style>;
   }
+}
+
+function normalizeFillStyle(fill: Record<string, unknown>): void {
+  if (typeof fill.pattern === 'string' && fill.type === undefined) {
+    fill.type = 'pattern';
+  }
+
+  if (fill.foregroundColor !== undefined && fill.fgColor === undefined) {
+    fill.fgColor = fill.foregroundColor;
+  }
+
+  if (fill.backgroundColor !== undefined && fill.bgColor === undefined) {
+    fill.bgColor = fill.backgroundColor;
+  }
+
+  delete fill.foregroundColor;
+  delete fill.backgroundColor;
+}
+
+function cloneStylePart(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => cloneStylePart(item));
+  }
+
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  return Object.fromEntries(
+    Object.entries(value).map(([key, childValue]) => [key, cloneStylePart(childValue)]),
+  );
+}
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }

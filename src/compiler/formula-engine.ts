@@ -1,21 +1,27 @@
-import { ReportEngineError } from "../core/errors";
+import { ReportEngineError } from '../core/errors';
 import type {
   CellContent,
   FormulaBinaryOperator,
   FormulaDefinition,
   FormulaRangeReference,
-} from "../core/types";
-import type { RenderCell } from "./render-plan";
+  FormulaRangeScope,
+} from '../core/types';
+import type { RenderCell } from './render-plan';
 
 export interface FormulaCompileContext {
   resolveCellKey(key: string, sheetId?: string): string;
-  resolveRangeKeys(startKey: string, endKey: string, sheetId?: string): string;
+  resolveRangeKeys(
+    startKey: string,
+    endKey: string,
+    sheetId?: string,
+    scope?: FormulaRangeScope,
+  ): string;
 }
 
 export function compileCellContent(
   content: CellContent | undefined,
   context?: FormulaCompileContext,
-): Pick<RenderCell, "value" | "formula"> {
+): Pick<RenderCell, 'value' | 'formula'> {
   if (content === undefined) {
     return {};
   }
@@ -32,31 +38,36 @@ export function compileFormula(
   context?: FormulaCompileContext,
 ): string {
   switch (formula.type) {
-    case "raw":
+    case 'raw':
       return compileRawFormula(formula.expression);
-    case "literal":
+    case 'literal':
       return compileLiteralFormula(formula.value);
-    case "ref":
+    case 'ref':
       return requireCompileContext(context).resolveCellKey(formula.key, formula.sheetId);
-    case "range":
-      return requireCompileContext(context).resolveRangeKeys(formula.startKey, formula.endKey, formula.sheetId);
-    case "sum":
+    case 'range':
+      return requireCompileContext(context).resolveRangeKeys(
+        formula.startKey,
+        formula.endKey,
+        formula.sheetId,
+        formula.scope,
+      );
+    case 'sum':
       return `SUM(${compileSumArguments(formula.range, formula.values, context)})`;
-    case "round":
+    case 'round':
       return `ROUND(${compileFormula(formula.value, context)},${formula.digits})`;
-    case "if":
+    case 'if':
       return [
-        "IF(",
+        'IF(',
         compileFormula(formula.condition, context),
-        ",",
+        ',',
         compileFormula(formula.whenTrue, context),
-        ",",
+        ',',
         compileFormula(formula.whenFalse, context),
-        ")",
-      ].join("");
-    case "call":
-      return `${compileFunctionName(formula.name)}(${formula.args.map((arg) => compileFormula(arg, context)).join(",")})`;
-    case "binary":
+        ')',
+      ].join('');
+    case 'call':
+      return `${compileFunctionName(formula.name)}(${formula.args.map((arg) => compileFormula(arg, context)).join(',')})`;
+    case 'binary':
       return `(${compileFormula(formula.left, context)}${compileBinaryOperator(formula.operator)}${compileFormula(formula.right, context)})`;
     default:
       return assertNever(formula);
@@ -64,21 +75,13 @@ export function compileFormula(
 }
 
 export function isFormulaDefinition(value: unknown): value is FormulaDefinition {
-  if (!isRecord(value) || typeof value.type !== "string") {
+  if (!isRecord(value) || typeof value.type !== 'string') {
     return false;
   }
 
-  return [
-    "raw",
-    "literal",
-    "sum",
-    "round",
-    "if",
-    "call",
-    "binary",
-    "range",
-    "ref",
-  ].includes(value.type);
+  return ['raw', 'literal', 'sum', 'round', 'if', 'call', 'binary', 'range', 'ref'].includes(
+    value.type,
+  );
 }
 
 export function createFormulaCompileContext(
@@ -96,7 +99,18 @@ export function createFormulaCompileContext(
 
       return formatCellReference(address, options.currentSheetId);
     },
-    resolveRangeKeys(startKey: string, endKey: string, sheetId?: string): string {
+    resolveRangeKeys(
+      startKey: string,
+      endKey: string,
+      sheetId?: string,
+      scope?: FormulaRangeScope,
+    ): string {
+      if (scope) {
+        throw new ReportEngineError(
+          'Scoped formula ranges are only supported inside table section rows.',
+        );
+      }
+
       const targetSheetId = sheetId ?? options.currentSheetId;
       const start = keyMap.get(createFormulaKey(targetSheetId, startKey));
       const end = keyMap.get(createFormulaKey(targetSheetId, endKey));
@@ -110,7 +124,7 @@ export function createFormulaCompileContext(
       }
 
       if (end.row < start.row || end.column < start.column) {
-        throw new ReportEngineError("Formula range end key must resolve after start key.");
+        throw new ReportEngineError('Formula range end key must resolve after start key.');
       }
 
       return `${formatCellReference(start, options.currentSheetId)}:${formatCellReference(end, options.currentSheetId)}`;
@@ -130,16 +144,13 @@ export interface CellAddress {
 }
 
 export function formatCellAddress(address: CellAddress): string {
-  assertPositiveInteger(address.row, "formula row");
-  assertPositiveInteger(address.column, "formula column");
+  assertPositiveInteger(address.row, 'formula row');
+  assertPositiveInteger(address.column, 'formula column');
 
   return `${columnNumberToName(address.column)}${address.row}`;
 }
 
-export function formatCellReference(
-  address: CellAddress,
-  currentSheetId?: string,
-): string {
+export function formatCellReference(address: CellAddress, currentSheetId?: string): string {
   const localAddress = formatCellAddress(address);
 
   if (!address.sheetId || address.sheetId === currentSheetId) {
@@ -147,7 +158,9 @@ export function formatCellReference(
   }
 
   if (!address.sheetName) {
-    throw new ReportEngineError(`Formula reference for sheet "${address.sheetId}" is missing sheet name.`);
+    throw new ReportEngineError(
+      `Formula reference for sheet "${address.sheetId}" is missing sheet name.`,
+    );
   }
 
   return `${quoteSheetName(address.sheetName)}!${localAddress}`;
@@ -159,15 +172,24 @@ function compileSumArguments(
   context: FormulaCompileContext | undefined,
 ): string {
   const args = [
-    ...(range ? [requireCompileContext(context).resolveRangeKeys(range.startKey, range.endKey, range.sheetId)] : []),
+    ...(range
+      ? [
+          requireCompileContext(context).resolveRangeKeys(
+            range.startKey,
+            range.endKey,
+            range.sheetId,
+            range.scope,
+          ),
+        ]
+      : []),
     ...(values ? values.map((value) => compileFormula(value, context)) : []),
   ];
 
   if (args.length === 0) {
-    throw new ReportEngineError("SUM formula must include a range or values.");
+    throw new ReportEngineError('SUM formula must include a range or values.');
   }
 
-  return args.join(",");
+  return args.join(',');
 }
 
 export function createFormulaKey(sheetId: string | undefined, key: string): string {
@@ -179,11 +201,11 @@ function quoteSheetName(sheetName: string): string {
 }
 
 function compileRawFormula(expression: string): string {
-  if (typeof expression !== "string" || expression.trim() === "") {
-    throw new ReportEngineError("Raw formula expression must be a non-empty string.");
+  if (typeof expression !== 'string' || expression.trim() === '') {
+    throw new ReportEngineError('Raw formula expression must be a non-empty string.');
   }
 
-  if (expression.trimStart().startsWith("=")) {
+  if (expression.trimStart().startsWith('=')) {
     throw new ReportEngineError("Formula expression must not start with '='.");
   }
 
@@ -191,31 +213,31 @@ function compileRawFormula(expression: string): string {
 }
 
 function compileLiteralFormula(value: string | number | boolean | null): string {
-  if (typeof value === "number") {
+  if (typeof value === 'number') {
     return String(value);
   }
 
-  if (typeof value === "boolean") {
-    return value ? "TRUE" : "FALSE";
+  if (typeof value === 'boolean') {
+    return value ? 'TRUE' : 'FALSE';
   }
 
   if (value === null) {
-    return "\"\"";
+    return '""';
   }
 
-  return `"${value.replace(/"/g, "\"\"")}"`;
+  return `"${value.replace(/"/g, '""')}"`;
 }
 
 function compileFunctionName(name: string): string {
   if (!/^[A-Za-z][A-Za-z0-9_.]*$/.test(name)) {
-    throw new ReportEngineError("Formula function name must be a valid Excel function name.");
+    throw new ReportEngineError('Formula function name must be a valid Excel function name.');
   }
 
   return name.toUpperCase();
 }
 
 function compileBinaryOperator(operator: FormulaBinaryOperator): string {
-  const supportedOperators = new Set(["+", "-", "*", "/", ">", ">=", "<", "<=", "=", "<>"]);
+  const supportedOperators = new Set(['+', '-', '*', '/', '>', '>=', '<', '<=', '=', '<>']);
 
   if (!supportedOperators.has(operator)) {
     throw new ReportEngineError(`Formula binary operator "${operator}" is not supported.`);
@@ -226,7 +248,7 @@ function compileBinaryOperator(operator: FormulaBinaryOperator): string {
 
 function requireCompileContext(context: FormulaCompileContext | undefined): FormulaCompileContext {
   if (!context) {
-    throw new ReportEngineError("Formula key references require a compile context.");
+    throw new ReportEngineError('Formula key references require a compile context.');
   }
 
   return context;
@@ -234,7 +256,7 @@ function requireCompileContext(context: FormulaCompileContext | undefined): Form
 
 function columnNumberToName(column: number): string {
   let remaining = column;
-  let name = "";
+  let name = '';
 
   while (remaining > 0) {
     remaining -= 1;
@@ -246,13 +268,13 @@ function columnNumberToName(column: number): string {
 }
 
 function assertPositiveInteger(value: unknown, label: string): asserts value is number {
-  if (typeof value !== "number" || !Number.isInteger(value) || value < 1) {
+  if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
     throw new ReportEngineError(`${label} must be a positive integer.`);
   }
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 function assertNever(value: never): never {

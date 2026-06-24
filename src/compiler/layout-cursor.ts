@@ -1,21 +1,21 @@
-import { ReportEngineError } from "../core/errors";
+import { ReportEngineError } from '../core/errors';
 
 export class LayoutCursor {
   constructor(
     public row = 1,
     public column = 1,
   ) {
-    assertPositiveInteger(row, "row");
-    assertPositiveInteger(column, "column");
+    assertPositiveInteger(row, 'row');
+    assertPositiveInteger(column, 'column');
   }
 
   advanceRows(count = 1): void {
-    assertPositiveInteger(count, "row advance count");
+    assertPositiveInteger(count, 'row advance count');
     this.row += count;
   }
 
   advanceColumns(count = 1): void {
-    assertPositiveInteger(count, "column advance count");
+    assertPositiveInteger(count, 'column advance count');
     this.column += count;
   }
 

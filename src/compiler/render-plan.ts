@@ -1,4 +1,10 @@
-import type { CellValue, StyleRegistry, WorkbookMetadata } from "../core/types";
+import type {
+  CellStyleDefinition,
+  CellValue,
+  StyleValue,
+  StyleRegistry,
+  WorkbookMetadata,
+} from '../core/types';
 
 export interface RenderPlan {
   metadata?: WorkbookMetadata;
@@ -26,7 +32,8 @@ export interface RenderCell {
   value?: CellValue;
   formula?: string;
   link?: RenderLink;
-  style?: string;
+  style?: StyleValue;
+  inlineStyle?: CellStyleDefinition;
 }
 
 export interface RenderMergeRange {
@@ -52,7 +59,7 @@ export interface RenderLink {
 }
 
 export type RenderCommand =
-  | { type: "cell"; sheetId: string; cell: RenderCell }
-  | { type: "merge"; sheetId: string; range: RenderMergeRange }
-  | { type: "columnWidth"; sheetId: string; width: RenderColumnWidth }
-  | { type: "rowHeight"; sheetId: string; height: RenderRowHeight };
+  | { type: 'cell'; sheetId: string; cell: RenderCell }
+  | { type: 'merge'; sheetId: string; range: RenderMergeRange }
+  | { type: 'columnWidth'; sheetId: string; width: RenderColumnWidth }
+  | { type: 'rowHeight'; sheetId: string; height: RenderRowHeight };

@@ -14,93 +14,94 @@ export type FormulaDefinition =
   | RefFormulaDefinition;
 
 export interface RawFormulaDefinition {
-  type: "raw";
+  type: 'raw';
   expression: string;
 }
 
 export interface LiteralFormulaDefinition {
-  type: "literal";
+  type: 'literal';
   value: string | number | boolean | null;
 }
 
 export interface SumFormulaDefinition {
-  type: "sum";
+  type: 'sum';
   range?: FormulaRangeReference;
   values?: FormulaDefinition[];
 }
 
 export interface RoundFormulaDefinition {
-  type: "round";
+  type: 'round';
   value: FormulaDefinition;
   digits: number;
 }
 
 export interface IfFormulaDefinition {
-  type: "if";
+  type: 'if';
   condition: FormulaDefinition;
   whenTrue: FormulaDefinition;
   whenFalse: FormulaDefinition;
 }
 
 export interface CallFormulaDefinition {
-  type: "call";
+  type: 'call';
   name: string;
   args: FormulaDefinition[];
 }
 
 export interface BinaryFormulaDefinition {
-  type: "binary";
+  type: 'binary';
   operator: FormulaBinaryOperator;
   left: FormulaDefinition;
   right: FormulaDefinition;
 }
 
 export interface RefFormulaDefinition {
-  type: "ref";
+  type: 'ref';
   sheetId?: string;
   key: string;
 }
 
 export interface RangeFormulaDefinition {
-  type: "range";
+  type: 'range';
   sheetId?: string;
   startKey: string;
   endKey: string;
+  scope?: FormulaRangeScope;
 }
 
 export interface FormulaRangeReference {
   sheetId?: string;
   startKey: string;
   endKey: string;
+  scope?: FormulaRangeScope;
 }
 
-export type FormulaBinaryOperator =
-  | "+"
-  | "-"
-  | "*"
-  | "/"
-  | ">"
-  | ">="
-  | "<"
-  | "<="
-  | "="
-  | "<>";
+export type FormulaRangeScope = 'currentRows' | 'allRows';
+
+export type FormulaBinaryOperator = '+' | '-' | '*' | '/' | '>' | '>=' | '<' | '<=' | '=' | '<>';
 
 export type StyleRegistry = Record<string, CellStyleDefinition>;
 
+export type StyleValue = string | CellStyleDefinition;
+
 export interface StyleReference {
-  style?: string;
+  style?: StyleValue;
 }
 
 export interface CellStyleDefinition {
+  extends?: string;
+  [key: string]: unknown;
   font?: FontStyleDefinition;
   fill?: FillStyleDefinition;
   border?: BorderStyleDefinition;
   alignment?: AlignmentStyleDefinition;
+  numFmt?: string;
   numberFormat?: string;
+  protection?: Record<string, unknown>;
 }
 
 export interface FontStyleDefinition {
+  [key: string]: unknown;
   name?: string;
   size?: number;
   bold?: boolean;
@@ -110,12 +111,17 @@ export interface FontStyleDefinition {
 }
 
 export interface FillStyleDefinition {
+  [key: string]: unknown;
+  type?: string;
   pattern?: FillPatternStyle;
+  fgColor?: ColorStyleDefinition;
+  bgColor?: ColorStyleDefinition;
   foregroundColor?: ColorStyleDefinition;
   backgroundColor?: ColorStyleDefinition;
 }
 
 export interface BorderStyleDefinition {
+  [key: string]: unknown;
   top?: BorderSideStyleDefinition;
   right?: BorderSideStyleDefinition;
   bottom?: BorderSideStyleDefinition;
@@ -123,70 +129,68 @@ export interface BorderStyleDefinition {
 }
 
 export interface BorderSideStyleDefinition {
+  [key: string]: unknown;
   style: BorderLineStyle;
   color?: ColorStyleDefinition;
 }
 
 export interface AlignmentStyleDefinition {
+  [key: string]: unknown;
   horizontal?: HorizontalAlignmentStyle;
   vertical?: VerticalAlignmentStyle;
   wrapText?: boolean;
 }
 
 export interface ColorStyleDefinition {
+  [key: string]: unknown;
   argb: string;
 }
 
 export type FillPatternStyle =
-  | "none"
-  | "solid"
-  | "darkVertical"
-  | "darkHorizontal"
-  | "darkGrid"
-  | "darkTrellis"
-  | "darkDown"
-  | "darkUp"
-  | "lightVertical"
-  | "lightHorizontal"
-  | "lightGrid"
-  | "lightTrellis"
-  | "lightDown"
-  | "lightUp"
-  | "darkGray"
-  | "mediumGray"
-  | "lightGray"
-  | "gray125"
-  | "gray0625";
+  | 'none'
+  | 'solid'
+  | 'darkVertical'
+  | 'darkHorizontal'
+  | 'darkGrid'
+  | 'darkTrellis'
+  | 'darkDown'
+  | 'darkUp'
+  | 'lightVertical'
+  | 'lightHorizontal'
+  | 'lightGrid'
+  | 'lightTrellis'
+  | 'lightDown'
+  | 'lightUp'
+  | 'darkGray'
+  | 'mediumGray'
+  | 'lightGray'
+  | 'gray125'
+  | 'gray0625';
 
 export type BorderLineStyle =
-  | "thin"
-  | "dotted"
-  | "hair"
-  | "medium"
-  | "double"
-  | "thick"
-  | "dashDot"
-  | "dashDotDot"
-  | "slantDashDot"
-  | "mediumDashed"
-  | "mediumDashDotDot"
-  | "mediumDashDot";
+  | 'thin'
+  | 'dotted'
+  | 'hair'
+  | 'medium'
+  | 'double'
+  | 'thick'
+  | 'dashDot'
+  | 'dashDotDot'
+  | 'slantDashDot'
+  | 'mediumDashed'
+  | 'mediumDashDotDot'
+  | 'mediumDashDot';
 
 export type HorizontalAlignmentStyle =
-  | "left"
-  | "center"
-  | "right"
-  | "fill"
-  | "justify"
-  | "centerContinuous"
-  | "distributed";
+  | 'left'
+  | 'center'
+  | 'right'
+  | 'fill'
+  | 'justify'
+  | 'centerContinuous'
+  | 'distributed';
 
-export type VerticalAlignmentStyle =
-  | "top"
-  | "middle"
-  | "bottom"
-  | "distributed"
-  | "justify";
+export type VerticalAlignmentStyle = 'top' | 'middle' | 'bottom' | 'distributed' | 'justify';
 
 export interface WorkbookMetadata {
   title?: string;
@@ -210,12 +214,7 @@ export interface SheetDefinition {
   blocks: Block[];
 }
 
-export type Block =
-  | TitleBlock
-  | TextBlock
-  | SpacerBlock
-  | GridBlock
-  | TableBlock<any>;
+export type Block = TitleBlock | TextBlock | SpacerBlock | GridBlock | TableBlock<any>;
 
 export interface BaseBlock {
   type: string;
@@ -223,24 +222,24 @@ export interface BaseBlock {
 }
 
 export interface TitleBlock extends BaseBlock, StyleReference {
-  type: "title";
+  type: 'title';
   text: string;
   height?: number;
 }
 
 export interface TextBlock extends BaseBlock, StyleReference {
-  type: "text";
+  type: 'text';
   text: string;
   height?: number;
 }
 
 export interface SpacerBlock extends BaseBlock {
-  type: "spacer";
+  type: 'spacer';
   rows?: number;
 }
 
 export interface GridBlock extends BaseBlock {
-  type: "grid";
+  type: 'grid';
   rows: GridRow[];
 }
 
@@ -258,40 +257,80 @@ export interface GridCell extends StyleReference {
 }
 
 export interface TableBlock<Row = Record<string, unknown>> extends BaseBlock {
-  type: "table";
+  type: 'table';
   columns: TableColumn<Row>[];
-  data: Row[] | AsyncIterable<Row>;
-  headerStyle?: string;
-  bodyStyle?: string;
+  data: TableDataItem<Row>[] | AsyncIterable<TableDataItem<Row>>;
+  titleRows?: TableTitleRow[];
+  headerStyle?: StyleValue;
+  bodyStyle?: StyleValue;
+  border?: TableBorderDefinition;
 }
 
-export interface TableColumn<
-  Row = Record<string, unknown>,
-> extends StyleReference {
-  title: string;
+export type TableBorderDefinition = BorderLineStyle | BorderStyleDefinition;
+
+export type TableDataItem<Row = Record<string, unknown>> = Row | TableSectionRow<Row>;
+
+export interface TableTitleRow extends StyleReference {
+  value: CellContent;
+  height?: number;
+}
+
+export interface TableSectionRow<Row = Record<string, unknown>> extends StyleReference {
+  type: 'section';
+  resetRows?: boolean;
+  height?: number;
+  cells: TableSectionCell<Row>[];
+}
+
+export interface TableSectionCell<Row = Record<string, unknown>> extends StyleReference {
   key?: string;
+  column?: number;
+  columnKey?: string;
+  value?: CellContent | TableSectionCellAccessor<Row>;
+  colSpan?: number | 'remaining';
+}
+
+export type TableSectionCellAccessor<Row = Record<string, unknown>> = (
+  context: TableSectionCellContext<Row>,
+) => CellContent;
+
+export interface TableSectionCellContext<Row = Record<string, unknown>> {
+  rows: Row[];
+  allRows: Row[];
+  dataIndex: number;
+  rowIndex: number;
+}
+
+export interface TableColumn<Row = Record<string, unknown>> extends StyleReference {
+  title: string;
+  key?: keyof Row;
   accessor?: (row: Row) => CellContent;
   children?: TableColumn<Row>[];
+  childrenRowOffset?: number;
   width?: number;
+  headerStyle?: StyleValue;
+  bodyStyle?: StyleValue;
 }
 
-export type TypedWorkbookDefinition<TWorkbook extends WorkbookDefinition> =
-  Omit<TWorkbook, "sheets"> & {
-    sheets: {
-      [TIndex in keyof TWorkbook["sheets"]]: TWorkbook["sheets"][TIndex] extends SheetDefinition
-        ? TypedSheetDefinition<TWorkbook, TWorkbook["sheets"][TIndex]>
-        : TWorkbook["sheets"][TIndex];
-    };
+export type TypedWorkbookDefinition<TWorkbook extends WorkbookDefinition> = Omit<
+  TWorkbook,
+  'sheets'
+> & {
+  sheets: {
+    [TIndex in keyof TWorkbook['sheets']]: TWorkbook['sheets'][TIndex] extends SheetDefinition
+      ? TypedSheetDefinition<TWorkbook, TWorkbook['sheets'][TIndex]>
+      : TWorkbook['sheets'][TIndex];
   };
+};
 
 type TypedSheetDefinition<
   TWorkbook extends WorkbookDefinition,
   TSheet extends SheetDefinition,
-> = Omit<TSheet, "blocks"> & {
+> = Omit<TSheet, 'blocks'> & {
   blocks: {
-    [TIndex in keyof TSheet["blocks"]]: TSheet["blocks"][TIndex] extends Block
-      ? TypedBlockDefinition<TWorkbook, TSheet, TSheet["blocks"][TIndex]>
-      : TSheet["blocks"][TIndex];
+    [TIndex in keyof TSheet['blocks']]: TSheet['blocks'][TIndex] extends Block
+      ? TypedBlockDefinition<TWorkbook, TSheet, TSheet['blocks'][TIndex]>
+      : TSheet['blocks'][TIndex];
   };
 };
 
@@ -309,17 +348,17 @@ type TypedGridBlock<
   TWorkbook extends WorkbookDefinition,
   TSheet extends SheetDefinition,
   TBlock extends GridBlock,
-> = Omit<TBlock, "rows"> & {
+> = Omit<TBlock, 'rows'> & {
   rows: {
-    [TRowIndex in keyof TBlock["rows"]]: TBlock["rows"][TRowIndex] extends GridRow
-      ? Omit<TBlock["rows"][TRowIndex], "cells"> & {
+    [TRowIndex in keyof TBlock['rows']]: TBlock['rows'][TRowIndex] extends GridRow
+      ? Omit<TBlock['rows'][TRowIndex], 'cells'> & {
           cells: {
-            [TCellIndex in keyof TBlock["rows"][TRowIndex]["cells"]]: TBlock["rows"][TRowIndex]["cells"][TCellIndex] extends GridCell
-              ? TypedGridCell<TWorkbook, TSheet, TBlock["rows"][TRowIndex]["cells"][TCellIndex]>
-              : TBlock["rows"][TRowIndex]["cells"][TCellIndex];
+            [TCellIndex in keyof TBlock['rows'][TRowIndex]['cells']]: TBlock['rows'][TRowIndex]['cells'][TCellIndex] extends GridCell
+              ? TypedGridCell<TWorkbook, TSheet, TBlock['rows'][TRowIndex]['cells'][TCellIndex]>
+              : TBlock['rows'][TRowIndex]['cells'][TCellIndex];
           };
         }
-      : TBlock["rows"][TRowIndex];
+      : TBlock['rows'][TRowIndex];
   };
 };
 
@@ -327,7 +366,7 @@ type TypedGridCell<
   TWorkbook extends WorkbookDefinition,
   TSheet extends SheetDefinition,
   TCell extends GridCell,
-> = Omit<TCell, "value"> & {
+> = Omit<TCell, 'value'> & {
   value?: TypedCellContent<
     TWorkbook,
     SheetIdOf<TSheet>,
@@ -340,13 +379,13 @@ type TypedTableBlock<
   TSheet extends SheetDefinition,
   TBlock extends TableBlock<TRow>,
   TRow,
-> = Omit<TBlock, "columns"> & {
+> = Omit<TBlock, 'columns'> & {
   columns: TypedTableColumns<
     TWorkbook,
     TSheet,
     TRow,
-    TBlock["columns"],
-    TableColumnKeys<TBlock["columns"]>
+    TBlock['columns'],
+    TableColumnKeys<TBlock['columns']>
   >;
 };
 
@@ -369,16 +408,10 @@ type TypedTableColumn<
   TColumn extends TableColumn<TRow>,
   TAllKeys extends string,
 > = TColumn extends { children: TableColumn<TRow>[] }
-  ? Omit<TColumn, "children"> & {
-      children: TypedTableColumns<
-        TWorkbook,
-        TSheet,
-        TRow,
-        TColumn["children"],
-        TAllKeys
-      >;
+  ? Omit<TColumn, 'children'> & {
+      children: TypedTableColumns<TWorkbook, TSheet, TRow, TColumn['children'], TAllKeys>;
     }
-  : Omit<TColumn, "accessor"> & {
+  : Omit<TColumn, 'accessor'> & {
       accessor?: (row: TRow) => TypedCellContent<TWorkbook, SheetIdOf<TSheet>, TAllKeys>;
     };
 
@@ -408,10 +441,10 @@ type TypedRefFormulaDefinition<
   TCurrentSheetId extends string,
   TLocalKeys extends string,
 > =
-  | { type: "ref"; key: TLocalKeys; sheetId?: undefined }
+  | { type: 'ref'; key: TLocalKeys; sheetId?: undefined }
   | {
       [TSheetId in SheetIds<TWorkbook>]: {
-        type: "ref";
+        type: 'ref';
         sheetId: TSheetId;
         key: SheetGridKeys<TWorkbook, TSheetId>;
       };
@@ -423,17 +456,19 @@ type TypedRangeFormulaDefinition<
   TLocalKeys extends string,
 > =
   | {
-      type: "range";
+      type: 'range';
       startKey: TLocalKeys;
       endKey: TLocalKeys;
+      scope?: FormulaRangeScope;
       sheetId?: undefined;
     }
   | {
       [TSheetId in SheetIds<TWorkbook>]: {
-        type: "range";
+        type: 'range';
         sheetId: TSheetId;
         startKey: SheetGridKeys<TWorkbook, TSheetId>;
         endKey: SheetGridKeys<TWorkbook, TSheetId>;
+        scope?: undefined;
       };
     }[SheetIds<TWorkbook>];
 
@@ -445,6 +480,7 @@ type TypedFormulaRangeReference<
   | {
       startKey: TLocalKeys;
       endKey: TLocalKeys;
+      scope?: FormulaRangeScope;
       sheetId?: undefined;
     }
   | {
@@ -452,6 +488,7 @@ type TypedFormulaRangeReference<
         sheetId: TSheetId;
         startKey: SheetGridKeys<TWorkbook, TSheetId>;
         endKey: SheetGridKeys<TWorkbook, TSheetId>;
+        scope?: undefined;
       };
     }[SheetIds<TWorkbook>];
 
@@ -460,7 +497,7 @@ type TypedSumFormulaDefinition<
   TCurrentSheetId extends string,
   TLocalKeys extends string,
 > = {
-  type: "sum";
+  type: 'sum';
   range?: TypedFormulaRangeReference<TWorkbook, TCurrentSheetId, TLocalKeys>;
   values?: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
 };
@@ -470,7 +507,7 @@ type TypedRoundFormulaDefinition<
   TCurrentSheetId extends string,
   TLocalKeys extends string,
 > = {
-  type: "round";
+  type: 'round';
   value: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
   digits: number;
 };
@@ -480,7 +517,7 @@ type TypedIfFormulaDefinition<
   TCurrentSheetId extends string,
   TLocalKeys extends string,
 > = {
-  type: "if";
+  type: 'if';
   condition: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
   whenTrue: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
   whenFalse: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
@@ -491,7 +528,7 @@ type TypedCallFormulaDefinition<
   TCurrentSheetId extends string,
   TLocalKeys extends string,
 > = {
-  type: "call";
+  type: 'call';
   name: string;
   args: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
 };
@@ -501,51 +538,48 @@ type TypedBinaryFormulaDefinition<
   TCurrentSheetId extends string,
   TLocalKeys extends string,
 > = {
-  type: "binary";
+  type: 'binary';
   operator: FormulaBinaryOperator;
   left: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
   right: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
 };
 
 type SheetIds<TWorkbook extends WorkbookDefinition> = Extract<
-  TWorkbook["sheets"][number]["id"],
+  TWorkbook['sheets'][number]['id'],
   string
 >;
 
-type SheetIdOf<TSheet extends SheetDefinition> = Extract<TSheet["id"], string>;
+type SheetIdOf<TSheet extends SheetDefinition> = Extract<TSheet['id'], string>;
 
-type SheetById<
-  TWorkbook extends WorkbookDefinition,
-  TSheetId extends string,
-> = Extract<TWorkbook["sheets"][number], { id: TSheetId }>;
+type SheetById<TWorkbook extends WorkbookDefinition, TSheetId extends string> = Extract<
+  TWorkbook['sheets'][number],
+  { id: TSheetId }
+>;
 
-type SheetGridKeys<
-  TWorkbook extends WorkbookDefinition,
-  TSheetId extends string,
-> = SheetById<TWorkbook, TSheetId> extends infer TSheet
-  ? TSheet extends SheetDefinition
-    ? TSheet["blocks"][number] extends infer TBlock
-      ? TBlock extends GridBlock
-        ? GridBlockKeys<TBlock>
+type SheetGridKeys<TWorkbook extends WorkbookDefinition, TSheetId extends string> =
+  SheetById<TWorkbook, TSheetId> extends infer TSheet
+    ? TSheet extends SheetDefinition
+      ? TSheet['blocks'][number] extends infer TBlock
+        ? TBlock extends GridBlock
+          ? GridBlockKeys<TBlock>
+          : never
         : never
       : never
-    : never
-  : never;
+    : never;
 
 type GridBlockKeys<TBlock extends GridBlock> =
-  TBlock["rows"][number]["cells"][number] extends infer TCell
+  TBlock['rows'][number]['cells'][number] extends infer TCell
     ? TCell extends { key: infer TKey }
       ? Extract<TKey, string>
       : never
     : never;
 
-type TableColumnKeys<TColumns extends TableColumn<any>[]> =
-  TColumns[number] extends infer TColumn
-    ? TColumn extends TableColumn<any>
-      ? TColumn extends { children: TableColumn<any>[] }
-        ? TableColumnKeys<TColumn["children"]>
-        : TColumn extends { key: infer TKey }
-          ? Extract<TKey, string>
-          : never
-      : never
-    : never;
+type TableColumnKeys<TColumns extends TableColumn<any>[]> = TColumns[number] extends infer TColumn
+  ? TColumn extends TableColumn<any>
+    ? TColumn extends { children: TableColumn<any>[] }
+      ? TableColumnKeys<TColumn['children']>
+      : TColumn extends { key: infer TKey }
+        ? Extract<TKey, string>
+        : never
+    : never
+  : never;

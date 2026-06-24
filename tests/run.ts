@@ -1,5 +1,5 @@
-import { runHeaderTreeTest } from "./header-tree.test";
 import "./render-plan.test";
+import { runSectionedTableTest } from "./sectioned-table.test";
 import "./smoke.test";
 import "./workbook-sheet.test";
 
@@ -8,7 +8,8 @@ void (async () => {
   // await runBasicBlocksTest();
   // await runGridBlockTest();
   // await runTableBlockTest();
-  await runHeaderTreeTest();
+  // await runHeaderTreeTest();
+  await runSectionedTableTest();
   // await runMergeEngineTest();
   // await runVariableEngineTest();
   // await runFormulaEngineTest();

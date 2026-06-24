@@ -1,19 +1,10 @@
-export {
-  defineWorkbook,
-  isWorkbookDefinition,
-} from "./core/workbook";
+export { defineWorkbook, isWorkbookDefinition } from './core/workbook';
 
-export {
-  ReportEngineError,
-} from "./core/errors";
+export { ReportEngineError } from './core/errors';
 
-export {
-  createSheetRegistry,
-} from "./core/sheet-registry";
+export { createSheetRegistry } from './core/sheet-registry';
 
-export type {
-  SheetRegistry,
-} from "./core/sheet-registry";
+export type { SheetRegistry } from './core/sheet-registry';
 
 export type {
   Block,
@@ -32,6 +23,7 @@ export type {
   FontStyleDefinition,
   FormulaDefinition,
   FormulaRangeReference,
+  FormulaRangeScope,
   GridBlock,
   GridCell,
   GridRow,
@@ -46,9 +38,17 @@ export type {
   SpacerBlock,
   StyleReference,
   StyleRegistry,
+  StyleValue,
   SumFormulaDefinition,
   TableBlock,
+  TableBorderDefinition,
   TableColumn,
+  TableSectionCell,
+  TableSectionCellAccessor,
+  TableSectionCellContext,
+  TableSectionRow,
+  TableDataItem,
+  TableTitleRow,
   TextBlock,
   TitleBlock,
   TypedFormulaDefinition,
@@ -56,7 +56,7 @@ export type {
   VerticalAlignmentStyle,
   WorkbookDefinition,
   WorkbookMetadata,
-} from "./core/types";
+} from './core/types';
 
 export {
   compileBlock,
@@ -77,7 +77,7 @@ export {
   normalizeMergeRange,
   resolvePath,
   RenderPlanBuilder,
-} from "./compiler";
+} from './compiler';
 
 export type {
   BlockCompiler,
@@ -91,7 +91,7 @@ export type {
   RenderContext,
   SheetContext,
   VariableScope,
-} from "./compiler";
+} from './compiler';
 
 export type {
   RenderCell,
@@ -103,14 +103,8 @@ export type {
   RenderPlanSheet,
   RenderRow,
   RenderRowHeight,
-} from "./compiler/render-plan";
+} from './compiler/render-plan';
 
-export {
-  renderWorkbook,
-} from "./renderer";
+export { renderWorkbook } from './renderer';
 
-export type {
-  WorkbookOutputAdapter,
-  WorkbookRenderer,
-  WorkbookRenderOptions,
-} from "./renderer";
+export type { WorkbookOutputAdapter, WorkbookRenderer, WorkbookRenderOptions } from './renderer';

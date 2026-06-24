@@ -213,6 +213,55 @@ const complexWorkbook = defineWorkbook({
   ],
 });
 
+const staggeredHeaderWorkbook = defineWorkbook({
+  styles: {
+    header: {
+      font: { bold: true },
+      alignment: { horizontal: "center", vertical: "middle" },
+      border: {
+        top: { style: "thin" },
+        left: { style: "thin" },
+        bottom: { style: "thin" },
+        right: { style: "thin" },
+      },
+    },
+  },
+  sheets: [
+    {
+      id: "staggered_header",
+      name: "Staggered Header",
+      blocks: [
+        {
+          type: "table",
+          headerStyle: "header",
+          border: "thin",
+          columns: [
+            { title: "STT", key: "stt" },
+            {
+              title: "Thực tế giảng dạy",
+              children: [
+                {
+                  title: "Học kỳ I",
+                  children: [{ title: "VN", key: "hocKyI_vn" }],
+                },
+              ],
+            },
+            {
+              title: "Thành tiền",
+              childrenRowOffset: 2,
+              children: [
+                { title: "VN", key: "vn" },
+                { title: "Tổng", key: "tong" },
+              ],
+            },
+          ],
+          data: [],
+        },
+      ],
+    },
+  ],
+});
+
 export async function runHeaderTreeTest(): Promise<void> {
   const renderPlan = compileWorkbookToRenderPlan(workbook);
   const sheetPlan = renderPlan.sheets[0];
@@ -344,6 +393,39 @@ export async function runHeaderTreeTest(): Promise<void> {
   assert.equal(complexSheet?.getCell("A4").border.bottom?.style, "thin");
   assert.equal(complexSheet?.getCell("G4").border.right?.style, "thin");
   assert.equal(complexSheet?.getCell("G4").border.bottom?.style, "thin");
+
+  const staggeredRenderPlan = compileWorkbookToRenderPlan(staggeredHeaderWorkbook);
+  const staggeredSheetPlan = staggeredRenderPlan.sheets[0];
+
+  assert.equal(staggeredSheetPlan?.rows.length, 3);
+  assert.deepEqual(
+    staggeredSheetPlan.rows[0]?.cells.map((cell) => cell.value),
+    ["STT", "Thực tế giảng dạy", "Thành tiền"],
+  );
+  assert.deepEqual(
+    staggeredSheetPlan.rows[1]?.cells.map((cell) => cell.value),
+    ["Học kỳ I"],
+  );
+  assert.deepEqual(
+    staggeredSheetPlan.rows[2]?.cells.map((cell) => cell.value),
+    ["VN", "VN", "Tổng"],
+  );
+  assert.deepEqual(staggeredSheetPlan.merges, [
+    { startRow: 1, startColumn: 1, endRow: 3, endColumn: 1 },
+    { startRow: 1, startColumn: 3, endRow: 2, endColumn: 4 },
+  ]);
+
+  const staggeredOutputPath = "output/phase-9-header-tree-staggered-demo.xlsx";
+  await renderWorkbook(staggeredHeaderWorkbook).writeFile(staggeredOutputPath);
+
+  const staggeredRenderedWorkbook = new ExcelJS.Workbook();
+  await staggeredRenderedWorkbook.xlsx.readFile(staggeredOutputPath);
+
+  const staggeredSheet = staggeredRenderedWorkbook.getWorksheet("Staggered Header");
+  assert.equal(staggeredSheet?.getCell("C1").value, "Thành tiền");
+  assert.equal(staggeredSheet?.getCell("C2").value, "Thành tiền");
+  assert.equal(staggeredSheet?.getCell("C3").value, "VN");
+  assert.equal(staggeredSheet?.getCell("D3").value, "Tổng");
 
   assert.throws(
     () =>

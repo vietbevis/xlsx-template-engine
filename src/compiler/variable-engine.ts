@@ -9,16 +9,16 @@ export interface VariableScope {
 const VARIABLE_PATTERN = /\{\{\s*([^{}\s]+)\s*\}\}/g;
 
 export function resolvePath(context: RenderContext | undefined, path: string): unknown {
-  if (!context || path.trim() === "") {
+  if (!context || path.trim() === '') {
     return undefined;
   }
 
-  return path.split(".").reduce<unknown>((current, segment) => {
-    if (current === undefined || current === null || segment === "") {
+  return path.split('.').reduce<unknown>((current, segment) => {
+    if (current === undefined || current === null || segment === '') {
       return undefined;
     }
 
-    if (segment === "length" && (Array.isArray(current) || typeof current === "string")) {
+    if (segment === 'length' && (Array.isArray(current) || typeof current === 'string')) {
       return current.length;
     }
 
@@ -26,7 +26,7 @@ export function resolvePath(context: RenderContext | undefined, path: string): u
       return current[Number(segment)];
     }
 
-    if (typeof current === "object" && Object.prototype.hasOwnProperty.call(current, segment)) {
+    if (typeof current === 'object' && Object.prototype.hasOwnProperty.call(current, segment)) {
       return (current as Record<string, unknown>)[segment];
     }
 
@@ -42,7 +42,7 @@ export function interpolateVariables(value: string, scope: VariableScope): strin
 }
 
 export function interpolateCellValue<TValue>(value: TValue, scope: VariableScope): TValue {
-  if (typeof value !== "string") {
+  if (typeof value !== 'string') {
     return value;
   }
 
@@ -67,7 +67,7 @@ function resolveScopedPath(scope: VariableScope, path: string): unknown {
 
 function formatInterpolatedValue(value: unknown): string {
   if (value === undefined || value === null) {
-    return "";
+    return '';
   }
 
   if (value instanceof Date) {

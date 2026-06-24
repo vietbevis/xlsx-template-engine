@@ -1,9 +1,5 @@
-import { validateWorkbookDefinition } from "./validation";
-import type {
-  TypedWorkbookDefinition,
-  WorkbookDefinition,
-  WorkbookMetadata,
-} from "./types";
+import { validateWorkbookDefinition } from './validation';
+import type { TypedWorkbookDefinition, WorkbookDefinition, WorkbookMetadata } from './types';
 
 export function defineWorkbook<const TWorkbook extends WorkbookDefinition>(
   definition: TWorkbook & TypedWorkbookDefinition<TWorkbook>,

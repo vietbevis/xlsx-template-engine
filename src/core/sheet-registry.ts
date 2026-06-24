@@ -1,5 +1,5 @@
-import { ReportEngineError } from "./errors";
-import type { SheetDefinition } from "./types";
+import { ReportEngineError } from './errors';
+import type { SheetDefinition } from './types';
 
 export type SheetRegistry = ReadonlyMap<string, SheetDefinition>;
 
