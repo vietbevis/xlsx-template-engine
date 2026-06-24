@@ -1,12 +1,11 @@
 import type { Writable } from 'stream';
+import type { RenderContext } from '../compiler';
 import { compileWorkbookToRenderPlan } from '../compiler';
 import type { WorkbookDefinition } from '../core/types';
 import type { RenderPlan } from '../compiler/render-plan';
 import { ExcelJsWorkbookAdapter } from '../adapters/exceljs/workbook-adapter';
-import type { RenderContext } from '../compiler/variable-engine';
 
 export interface WorkbookRenderOptions {
-  adapter?: WorkbookOutputAdapter;
   context?: RenderContext;
 }
 
@@ -27,7 +26,7 @@ export function renderWorkbook(
   options: WorkbookRenderOptions = {},
 ): WorkbookRenderer {
   const renderPlan = compileWorkbookToRenderPlan(workbook, { context: options.context });
-  const adapter = options.adapter ?? new ExcelJsWorkbookAdapter();
+  const adapter = new ExcelJsWorkbookAdapter();
 
   return {
     writeFile(filePath: string): Promise<void> {

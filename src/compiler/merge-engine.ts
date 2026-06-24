@@ -9,6 +9,14 @@ export type NormalizedMergeRange =
   | { type: 'skip-single-cell' }
   | { type: 'range'; range: MergeRange };
 
+/**
+ * Chuẩn hóa một merge range từ render plan thành dạng có thể sử dụng để ghi vào sheet.
+ *
+ * - Validate các tọa độ phải là số nguyên dương và end >= start.
+ * - Nếu range chỉ gồm đúng 1 ô (startRow === endRow và startColumn === endColumn),
+ *   trả về `skip-single-cell` để bỏ qua (không cần merge ô đơn).
+ * - Ngược lại, gắn thêm `sheetId` và trả về range hợp lệ.
+ */
 export function normalizeMergeRange(
   sheetId: string,
   range: RenderMergeRange,
@@ -38,6 +46,13 @@ export function normalizeMergeRange(
   };
 }
 
+/**
+ * Kiểm tra một merge range mới (candidate) có chồng lấp với bất kỳ range nào
+ * trong danh sách đã tồn tại hay không.
+ *
+ * Chỉ so sánh các range cùng `sheetId`. Nếu phát hiện chồng lấp, ném lỗi
+ * kèm thông tin tọa độ của cả hai range để dễ debug.
+ */
 export function assertMergeDoesNotOverlap(
   candidate: MergeRange,
   existingRanges: MergeRange[],
@@ -53,6 +68,16 @@ export function assertMergeDoesNotOverlap(
   }
 }
 
+/**
+ * Kiểm tra hai RenderMergeRange có chồng lấp nhau không (AABB intersection).
+ *
+ * Hai range KHÔNG chồng lấp khi một trong các điều kiện sau thỏa mãn:
+ *   - left hoàn toàn ở trên right  (left.endRow < right.startRow)
+ *   - right hoàn toàn ở trên left  (right.endRow < left.startRow)
+ *   - left hoàn toàn ở trái right  (left.endColumn < right.startColumn)
+ *   - right hoàn toàn ở trái left  (right.endColumn < left.startColumn)
+ * Phủ định của tất cả điều kiện trên → hai range chồng lấp.
+ */
 function rangesOverlap(left: RenderMergeRange, right: RenderMergeRange): boolean {
   return !(
     left.endRow < right.startRow ||
@@ -62,10 +87,22 @@ function rangesOverlap(left: RenderMergeRange, right: RenderMergeRange): boolean
   );
 }
 
+/**
+ * Định dạng một MergeRange thành chuỗi dễ đọc theo ký hiệu R1C1 của Excel, R = row, C = column
+ * ví dụ: `"Sheet1"!R2C1:R4C3`.
+ * Dùng cho mục đích hiển thị trong thông báo lỗi.
+ */
 function formatMergeRange(range: MergeRange): string {
   return `"${range.sheetId}"!R${range.startRow}C${range.startColumn}:R${range.endRow}C${range.endColumn}`;
 }
 
+/**
+ * Assert một giá trị phải là số nguyên dương (>= 1).
+ * Dùng để validate tọa độ hàng/cột trong merge range trước khi xử lý.
+ *
+ * @param value - Giá trị cần kiểm tra.
+ * @param label - Tên trường, dùng trong thông báo lỗi (vd: "merge start row").
+ */
 function assertPositiveInteger(value: number, label: string): void {
   if (!Number.isInteger(value) || value < 1) {
     throw new ReportEngineError(`Render plan ${label} must be a positive integer.`);

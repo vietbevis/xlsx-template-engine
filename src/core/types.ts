@@ -4,6 +4,10 @@ export type CellValue = Exclude<ExcelJS.CellValue, undefined>;
 
 export type CellContent = CellValue | FormulaDefinition;
 
+/** Column node lá (không có children) trong cây cột của table. */
+export type TableColumnNode = Extract<Block, { type: 'table' }>['columns'][number];
+export type TableLeafColumn = TableColumnNode & { children?: undefined };
+
 export type FormulaDefinition =
   | RawFormulaDefinition
   | LiteralFormulaDefinition
@@ -13,7 +17,16 @@ export type FormulaDefinition =
   | CallFormulaDefinition
   | BinaryFormulaDefinition
   | RangeFormulaDefinition
-  | RefFormulaDefinition;
+  | RefFormulaDefinition
+  | NamedRangeFormulaDefinition
+  | MaxFormulaDefinition
+  | MinFormulaDefinition
+  | AverageFormulaDefinition
+  | CountFormulaDefinition
+  | CountAFormulaDefinition
+  | ConcatenateFormulaDefinition
+  | IfErrorFormulaDefinition
+  | VlookupFormulaDefinition;
 
 export interface RawFormulaDefinition {
   type: 'raw';
@@ -50,6 +63,50 @@ export interface CallFormulaDefinition {
   args: readonly FormulaDefinition[];
 }
 
+export interface MaxFormulaDefinition {
+  type: 'max';
+  values: readonly FormulaDefinition[];
+}
+
+export interface MinFormulaDefinition {
+  type: 'min';
+  values: readonly FormulaDefinition[];
+}
+
+export interface AverageFormulaDefinition {
+  type: 'average';
+  range: FormulaRangeReference;
+}
+
+export interface CountFormulaDefinition {
+  type: 'count';
+  range: FormulaRangeReference;
+}
+
+export interface CountAFormulaDefinition {
+  type: 'counta';
+  range: FormulaRangeReference;
+}
+
+export interface ConcatenateFormulaDefinition {
+  type: 'concatenate';
+  values: readonly FormulaDefinition[];
+}
+
+export interface IfErrorFormulaDefinition {
+  type: 'iferror';
+  value: FormulaDefinition;
+  fallback: FormulaDefinition;
+}
+
+export interface VlookupFormulaDefinition {
+  type: 'vlookup';
+  lookup: FormulaDefinition;
+  rangeName: string;
+  colIndex: number;
+  exactMatch?: boolean;
+}
+
 export interface BinaryFormulaDefinition {
   type: 'binary';
   operator: FormulaBinaryOperator;
@@ -61,6 +118,11 @@ export interface RefFormulaDefinition {
   type: 'ref';
   sheetId?: string;
   id: string;
+}
+
+export interface NamedRangeFormulaDefinition {
+  type: 'namedRange';
+  name: string;
 }
 
 export interface RangeFormulaDefinition {
@@ -84,10 +146,10 @@ export type FormulaBinaryOperator = '+' | '-' | '*' | '/' | '>' | '>=' | '<' | '
 
 export type StyleRegistry = Record<string, CellStyleDefinition>;
 
-export type StyleValue = string | CellStyleDefinition;
+export type StyleValue<TStyleName extends string = string> = TStyleName | CellStyleDefinition;
 
-export interface StyleReference {
-  style?: StyleValue;
+export interface StyleReference<TStyleName extends string = string> {
+  style?: StyleValue<TStyleName>;
 }
 
 export type CellStyleDefinition = Partial<ExcelJS.Style>;
@@ -105,17 +167,31 @@ export interface WorkbookDefinition {
   defaultStyle?: CellStyleDefinition;
   styles?: StyleRegistry;
   context?: Record<string, unknown>;
+  namedRanges?: readonly NamedRangeDefinition[];
   sheets: readonly SheetDefinition[];
+}
+
+export interface NamedRangeDefinition {
+  name: string;
+  sheetId: string;
+  startId: string;
+  endId: string;
 }
 
 export interface SheetDefinition {
   id: string;
   name: string;
   context?: Record<string, unknown>;
+  freezePane?: SheetFreezePane;
   blocks: readonly Block[];
 }
 
-export type Block = TitleBlock | TextBlock | SpacerBlock | GridBlock | TableBlock;
+export interface SheetFreezePane {
+  rows?: number;
+  columns?: number;
+}
+
+export type Block = TitleBlock | TextBlock | SpacerBlock | GridBlock | TableBlock | DividerBlock;
 
 export interface BaseBlock {
   type: string;
@@ -139,6 +215,11 @@ export interface SpacerBlock extends BaseBlock {
   rows?: number;
 }
 
+export interface DividerBlock extends BaseBlock, StyleReference {
+  type: 'divider';
+  rows?: number;
+}
+
 export interface GridBlock extends BaseBlock {
   type: 'grid';
   rows: readonly GridRow[];
@@ -152,6 +233,8 @@ export interface GridRow {
 export interface GridCell extends StyleReference {
   id?: string;
   value?: CellContent;
+  formulaResult?: CellValue;
+  styleResolver?: (value: CellValue | undefined) => StyleValue | undefined;
   colSpan?: number;
   rowSpan?: number;
   width?: number;
@@ -160,12 +243,17 @@ export interface GridCell extends StyleReference {
 export interface TableBlock<Row = Record<string, unknown>> extends BaseBlock {
   type: 'table';
   columns: readonly TableColumn<Row>[];
-  data: readonly TableDataItem<Row>[] | AsyncIterable<TableDataItem<Row>>;
+  data: readonly TableDataItem<Row>[];
   titleRows?: readonly TableTitleRow[];
   headerRowHeights?: readonly number[];
   bodyRowHeight?: number;
   headerStyle?: StyleValue;
   bodyStyle?: StyleValue;
+  evenRowStyle?: StyleValue;
+  oddRowStyle?: StyleValue;
+  footerRows?: readonly TableFooterRow<Row>[];
+  summaryStyle?: StyleValue;
+  rowHidden?: (row: Row, index: number) => boolean;
   border?: TableBorderDefinition;
 }
 
@@ -181,6 +269,7 @@ export interface TableTitleRow extends StyleReference {
 export interface TableSectionRow<Row = Record<string, unknown>> extends StyleReference {
   type: 'section';
   resetRows?: boolean;
+  hidden?: boolean;
   height?: number;
   cells: readonly TableSectionCell<Row>[];
 }
@@ -190,7 +279,14 @@ export interface TableSectionCell<Row = Record<string, unknown>> extends StyleRe
   column?: number;
   columnId?: string;
   value?: CellContent | TableSectionCellAccessor<Row>;
+  formulaResult?: CellValue;
+  styleResolver?: (value: CellValue | undefined) => StyleValue | undefined;
   colSpan?: number | 'remaining';
+}
+
+export interface TableFooterRow<Row = Record<string, unknown>> extends StyleReference {
+  height?: number;
+  cells: readonly TableSectionCell<Row>[];
 }
 
 export type TableSectionCellAccessor<Row = Record<string, unknown>> = (
@@ -211,14 +307,18 @@ export interface TableColumn<Row = Record<string, unknown>> extends StyleReferen
   children?: readonly TableColumn<Row>[];
   childrenRowOffset?: number;
   width?: number;
+  hidden?: boolean;
   headerStyle?: StyleValue;
   bodyStyle?: StyleValue;
+  styleResolver?: (value: CellValue | undefined, row: Row, rowIndex: number) => StyleValue | undefined;
+  summary?: 'sum' | 'count' | 'average' | FormulaDefinition;
 }
 
 export type TypedWorkbookDefinition<TWorkbook extends WorkbookDefinition> = Omit<
   TWorkbook,
-  'sheets'
+  'namedRanges' | 'sheets'
 > & {
+  namedRanges?: TypedNamedRanges<TWorkbook>;
   sheets: {
     [TIndex in keyof TWorkbook['sheets']]: TWorkbook['sheets'][TIndex] extends SheetDefinition
       ? TypedSheetDefinition<TWorkbook, TWorkbook['sheets'][TIndex]>
@@ -226,10 +326,10 @@ export type TypedWorkbookDefinition<TWorkbook extends WorkbookDefinition> = Omit
   };
 };
 
-type TypedSheetDefinition<
-  TWorkbook extends WorkbookDefinition,
-  TSheet extends SheetDefinition,
-> = Omit<TSheet, 'blocks'> & {
+type TypedSheetDefinition<TWorkbook extends WorkbookDefinition, TSheet extends SheetDefinition> = Omit<
+  TSheet,
+  'blocks'
+> & {
   blocks: {
     [TIndex in keyof TSheet['blocks']]: TSheet['blocks'][TIndex] extends Block
       ? TypedBlockDefinition<TWorkbook, TSheet, TSheet['blocks'][TIndex]>
@@ -245,7 +345,40 @@ type TypedBlockDefinition<
   ? TypedGridBlock<TWorkbook, TSheet, TBlock>
   : TBlock extends TableBlock<infer TRow>
     ? TypedTableBlock<TWorkbook, TSheet, TBlock, TRow>
-    : TBlock;
+    : TBlock extends TitleBlock | TextBlock | DividerBlock
+      ? TypedStyleReference<TWorkbook, TBlock>
+      : TBlock;
+
+type TypedNamedRanges<TWorkbook extends WorkbookDefinition> = TWorkbook['namedRanges'] extends
+  | readonly NamedRangeDefinition[]
+  | undefined
+  ? {
+      [TIndex in keyof TWorkbook['namedRanges']]: TWorkbook['namedRanges'][TIndex] extends NamedRangeDefinition
+        ? TypedNamedRangeDefinition<TWorkbook, TWorkbook['namedRanges'][TIndex]>
+        : TWorkbook['namedRanges'][TIndex];
+    }
+  : TWorkbook['namedRanges'];
+
+type TypedNamedRangeDefinition<TWorkbook extends WorkbookDefinition, TRange extends NamedRangeDefinition> = Omit<
+  TRange,
+  'sheetId' | 'startId' | 'endId'
+> &
+  {
+    [TSheetId in SheetIds<TWorkbook>]: {
+      sheetId: TSheetId;
+      startId: SheetGridKeys<TWorkbook, TSheetId>;
+      endId: SheetGridKeys<TWorkbook, TSheetId>;
+    };
+  }[SheetIds<TWorkbook>];
+
+type TypedStyleReference<TWorkbook extends WorkbookDefinition, TValue extends StyleReference> = Omit<
+  TValue,
+  'style'
+> & {
+  style?: TypedStyleValue<TWorkbook>;
+};
+
+type TypedStyleValue<TWorkbook extends WorkbookDefinition> = StyleNames<TWorkbook> | CellStyleDefinition;
 
 type TypedGridBlock<
   TWorkbook extends WorkbookDefinition,
@@ -265,16 +398,13 @@ type TypedGridBlock<
   };
 };
 
-type TypedGridCell<
-  TWorkbook extends WorkbookDefinition,
-  TSheet extends SheetDefinition,
-  TCell extends GridCell,
-> = Omit<TCell, 'value'> & {
-  value?: TypedCellContent<
-    TWorkbook,
-    SheetIdOf<TSheet>,
-    SheetGridKeys<TWorkbook, SheetIdOf<TSheet>>
-  >;
+type TypedGridCell<TWorkbook extends WorkbookDefinition, TSheet extends SheetDefinition, TCell extends GridCell> = Omit<
+  TCell,
+  'value' | 'style' | 'styleResolver'
+> & {
+  value?: TypedCellContent<TWorkbook, SheetIdOf<TSheet>, SheetGridKeys<TWorkbook, SheetIdOf<TSheet>>>;
+  style?: TypedStyleValue<TWorkbook>;
+  styleResolver?: (value: CellValue | undefined) => TypedStyleValue<TWorkbook> | undefined;
 };
 
 type TypedTableBlock<
@@ -283,13 +413,72 @@ type TypedTableBlock<
   TBlock extends TableBlock<TRow>,
   TRow,
 > = Omit<TBlock, 'columns'> & {
-  columns: TypedTableColumns<
+  headerStyle?: TypedStyleValue<TWorkbook>;
+  bodyStyle?: TypedStyleValue<TWorkbook>;
+  evenRowStyle?: TypedStyleValue<TWorkbook>;
+  oddRowStyle?: TypedStyleValue<TWorkbook>;
+  summaryStyle?: TypedStyleValue<TWorkbook>;
+  titleRows?: TypedTableTitleRows<TWorkbook, TBlock['titleRows']>;
+  footerRows?: TypedTableFooterRows<
     TWorkbook,
     TSheet,
     TRow,
-    TBlock['columns'],
+    TBlock['footerRows'],
     TableColumnKeys<TRow, TBlock['columns']>
   >;
+  columns: TypedTableColumns<TWorkbook, TSheet, TRow, TBlock['columns'], TableColumnKeys<TRow, TBlock['columns']>>;
+};
+
+type TypedTableTitleRows<TWorkbook extends WorkbookDefinition, TRows> = TRows extends readonly TableTitleRow[]
+  ? {
+      [TIndex in keyof TRows]: TRows[TIndex] extends TableTitleRow
+        ? TypedStyleReference<TWorkbook, TRows[TIndex]>
+        : TRows[TIndex];
+    }
+  : TRows;
+
+type TypedTableFooterRows<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TRow,
+  TRows,
+  TAllKeys extends string,
+> = TRows extends readonly TableFooterRow<TRow>[]
+  ? {
+      [TIndex in keyof TRows]: TRows[TIndex] extends TableFooterRow<TRow>
+        ? Omit<TRows[TIndex], 'cells' | 'style'> & {
+            style?: TypedStyleValue<TWorkbook>;
+            cells: TypedTableSectionCells<TWorkbook, TSheet, TRow, TRows[TIndex]['cells'], TAllKeys>;
+          }
+        : TRows[TIndex];
+    }
+  : TRows;
+
+type TypedTableSectionCells<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TRow,
+  TCells extends readonly TableSectionCell<TRow>[],
+  TAllKeys extends string,
+> = {
+  [TIndex in keyof TCells]: TCells[TIndex] extends TableSectionCell<TRow>
+    ? TypedTableSectionCell<TWorkbook, TSheet, TRow, TCells[TIndex], TAllKeys>
+    : TCells[TIndex];
+};
+
+type TypedTableSectionCell<
+  TWorkbook extends WorkbookDefinition,
+  TSheet extends SheetDefinition,
+  TRow,
+  TCell extends TableSectionCell<TRow>,
+  TAllKeys extends string,
+> = Omit<TCell, 'columnId' | 'value' | 'style' | 'styleResolver'> & {
+  columnId?: TAllKeys;
+  value?:
+    | TypedCellContent<TWorkbook, SheetIdOf<TSheet>, TAllKeys>
+    | ((context: TableSectionCellContext<TRow>) => TypedCellContent<TWorkbook, SheetIdOf<TSheet>, TAllKeys>);
+  style?: TypedStyleValue<TWorkbook>;
+  styleResolver?: (value: CellValue | undefined) => TypedStyleValue<TWorkbook> | undefined;
 };
 
 type TypedTableColumns<
@@ -311,11 +500,29 @@ type TypedTableColumn<
   TColumn extends TableColumn<TRow>,
   TAllKeys extends string,
 > = TColumn extends { children: readonly TableColumn<TRow>[] }
-  ? Omit<TColumn, 'children'> & {
+  ? Omit<TColumn, 'children' | 'style' | 'headerStyle' | 'bodyStyle' | 'styleResolver'> & {
+      style?: TypedStyleValue<TWorkbook>;
+      headerStyle?: TypedStyleValue<TWorkbook>;
+      bodyStyle?: TypedStyleValue<TWorkbook>;
+      styleResolver?: (
+        value: CellValue | undefined,
+        row: TRow,
+        rowIndex: number,
+      ) => TypedStyleValue<TWorkbook> | undefined;
       children: TypedTableColumns<TWorkbook, TSheet, TRow, TColumn['children'], TAllKeys>;
     }
-  : Omit<TColumn, 'accessor'> & {
+  : Omit<TColumn, 'accessor' | 'id' | 'style' | 'headerStyle' | 'bodyStyle' | 'styleResolver' | 'summary'> & {
+      id?: Extract<keyof TRow, string>;
       accessor?: (row: TRow) => TypedCellContent<TWorkbook, SheetIdOf<TSheet>, TAllKeys>;
+      style?: TypedStyleValue<TWorkbook>;
+      headerStyle?: TypedStyleValue<TWorkbook>;
+      bodyStyle?: TypedStyleValue<TWorkbook>;
+      styleResolver?: (
+        value: CellValue | undefined,
+        row: TRow,
+        rowIndex: number,
+      ) => TypedStyleValue<TWorkbook> | undefined;
+      summary?: 'sum' | 'count' | 'average' | TypedFormulaDefinition<TWorkbook, SheetIdOf<TSheet>, TAllKeys>;
     };
 
 type TypedCellContent<
@@ -337,7 +544,16 @@ export type TypedFormulaDefinition<
   | TypedRoundFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
   | TypedIfFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
   | TypedCallFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
-  | TypedBinaryFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  | TypedBinaryFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | NamedRangeFormulaDefinition
+  | TypedMaxFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedMinFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedAverageFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedCountFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedCountAFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedConcatenateFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedIfErrorFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>
+  | TypedVlookupFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
 
 type TypedRefFormulaDefinition<
   TWorkbook extends WorkbookDefinition,
@@ -447,10 +663,85 @@ type TypedBinaryFormulaDefinition<
   right: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
 };
 
-type SheetIds<TWorkbook extends WorkbookDefinition> = Extract<
-  TWorkbook['sheets'][number]['id'],
-  string
->;
+type TypedMaxFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'max';
+  values: readonly TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
+};
+
+type TypedMinFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'min';
+  values: readonly TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
+};
+
+type TypedAverageFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'average';
+  range: TypedFormulaRangeReference<TWorkbook, TCurrentSheetId, TLocalKeys>;
+};
+
+type TypedCountFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'count';
+  range: TypedFormulaRangeReference<TWorkbook, TCurrentSheetId, TLocalKeys>;
+};
+
+type TypedCountAFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'counta';
+  range: TypedFormulaRangeReference<TWorkbook, TCurrentSheetId, TLocalKeys>;
+};
+
+type TypedConcatenateFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'concatenate';
+  values: readonly TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>[];
+};
+
+type TypedIfErrorFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'iferror';
+  value: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  fallback: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+};
+
+type TypedVlookupFormulaDefinition<
+  TWorkbook extends WorkbookDefinition,
+  TCurrentSheetId extends string,
+  TLocalKeys extends string,
+> = {
+  type: 'vlookup';
+  lookup: TypedFormulaDefinition<TWorkbook, TCurrentSheetId, TLocalKeys>;
+  rangeName: string;
+  colIndex: number;
+  exactMatch?: boolean;
+};
+
+type SheetIds<TWorkbook extends WorkbookDefinition> = Extract<TWorkbook['sheets'][number]['id'], string>;
+
+type StyleNames<TWorkbook extends WorkbookDefinition> = Extract<keyof NonNullable<TWorkbook['styles']>, string>;
 
 type SheetIdOf<TSheet extends SheetDefinition> = Extract<TSheet['id'], string>;
 
@@ -470,17 +761,13 @@ type SheetGridKeys<TWorkbook extends WorkbookDefinition, TSheetId extends string
       : never
     : never;
 
-type GridBlockKeys<TBlock extends GridBlock> =
-  TBlock['rows'][number]['cells'][number] extends infer TCell
-    ? TCell extends { id: infer TKey }
-      ? Extract<TKey, string>
-      : never
-    : never;
+type GridBlockKeys<TBlock extends GridBlock> = TBlock['rows'][number]['cells'][number] extends infer TCell
+  ? TCell extends { id: infer TKey }
+    ? Extract<TKey, string>
+    : never
+  : never;
 
-type TableColumnKeys<
-  TRow,
-  TColumns extends readonly TableColumn<TRow>[],
-> = TColumns[number] extends infer TColumn
+type TableColumnKeys<TRow, TColumns extends readonly TableColumn<TRow>[]> = TColumns[number] extends infer TColumn
   ? TColumn extends TableColumn<TRow>
     ? TColumn extends { children: readonly TableColumn<TRow>[] }
       ? TableColumnKeys<TRow, TColumn['children']>

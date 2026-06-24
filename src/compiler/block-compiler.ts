@@ -10,6 +10,7 @@ import type {
   StyleRegistry,
   StyleValue,
   TableBorderDefinition,
+  TableFooterRow,
   TableSectionCell,
   TableSectionCellContext,
   TableSectionRow,
@@ -17,14 +18,14 @@ import type {
   WorkbookDefinition,
 } from '../core/types';
 import {
+  type CellAddress,
   compileCellContent,
   createFormulaCompileContext,
   createFormulaId,
   formatCellAddress,
   formatCellReference,
-  isFormulaDefinition,
-  type CellAddress,
   type FormulaCompileContext,
+  isFormulaDefinition,
 } from './formula-engine';
 import type { LayoutCursor } from './layout-cursor';
 import type { RenderPlanBuilder } from './render-plan-builder';
@@ -36,6 +37,7 @@ export interface SheetContext {
   styles?: StyleRegistry;
   variables: VariableScope;
   formulaIds?: Map<string, CellAddress>;
+  namedRangeNames?: ReadonlySet<string>;
 }
 
 export type BlockCompiler<TBlock extends Block = Block> = (
@@ -49,7 +51,7 @@ export type BlockCompilerRegistry = {
   [TType in Block['type']]: BlockCompiler<Extract<Block, { type: TType }>>;
 };
 
-export const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
+const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
   title(block, context, cursor, builder) {
     const variables = createBlockVariableScope(context, block);
 
@@ -91,6 +93,20 @@ export const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
   spacer(block, _context, cursor) {
     cursor.advanceRows(block.rows ?? 1);
   },
+  divider(block, context, cursor, builder) {
+    const rows = block.rows ?? 1;
+
+    for (let rowOffset = 0; rowOffset < rows; rowOffset += 1) {
+      builder.addCell(context.sheet.id, {
+        row: cursor.row + rowOffset,
+        column: cursor.column,
+        value: '',
+        style: block.style,
+      });
+    }
+
+    cursor.advanceRows(rows);
+  },
   grid(block, context, cursor, builder) {
     compileGridBlock(block, context, cursor, builder);
   },
@@ -109,9 +125,7 @@ export function compileBlock(
   const compiler = registry[block.type] as BlockCompiler | undefined;
 
   if (!compiler) {
-    throw new ReportEngineError(
-      `Unknown block type "${block.type}" in sheet "${context.sheet.id}".`,
-    );
+    throw new ReportEngineError(`Unknown block type "${block.type}" in sheet "${context.sheet.id}".`);
   }
 
   compiler(block, context, cursor, builder);
@@ -168,15 +182,23 @@ function compileGridBlock(
 
   const formulaContext = createFormulaCompileContext(
     context.formulaIds ?? createGridCellIdMap(placements, context.sheet),
-    { currentSheetId: context.sheet.id },
+    { currentSheetId: context.sheet.id, namedRanges: context.namedRangeNames },
   );
 
   for (const placement of placements) {
+    const compiledContent = compileCellContent(interpolateCellValue(placement.cell.value, variables), formulaContext);
+
     builder.addCell(context.sheet.id, {
       row: placement.row,
       column: placement.column,
-      ...compileCellContent(interpolateCellValue(placement.cell.value, variables), formulaContext),
-      style: placement.cell.style,
+      ...compiledContent,
+      formulaResult: isFormulaDefinition(placement.cell.value) ? placement.cell.formulaResult : undefined,
+      style: resolveCellStyle(
+        placement.cell.style,
+        placement.cell.styleResolver?.(compiledContent.value),
+        context,
+        `grid cell "${placement.cell.id ?? `${placement.row}:${placement.column}`}"`,
+      ),
     });
 
     if (placement.cell.width !== undefined) {
@@ -209,10 +231,7 @@ interface GridCellPlacement {
   column: number;
 }
 
-function createGridCellIdMap(
-  placements: GridCellPlacement[],
-  sheet: SheetDefinition,
-): Map<string, CellAddress> {
+function createGridCellIdMap(placements: GridCellPlacement[], sheet: SheetDefinition): Map<string, CellAddress> {
   const idMap = new Map<string, CellAddress>();
 
   for (const placement of placements) {
@@ -272,9 +291,7 @@ function compileTableBlock(
   builder: RenderPlanBuilder,
 ): void {
   if (block.data !== undefined && !Array.isArray(block.data)) {
-    throw new ReportEngineError(
-      'AsyncIterable table data is not yet supported. Use an array data source.',
-    );
+    throw new ReportEngineError('AsyncIterable table data is not yet supported. Use an array data source.');
   }
 
   const variables = createBlockVariableScope(context, block);
@@ -285,6 +302,7 @@ function compileTableBlock(
   const tableWidth = leafColumns.length;
   const allRows = collectTableDataRows(block);
   const tableInlineStyle = createTableInlineStyle(block.border);
+  const footerRows = resolveTableFooterRows(block, leafColumns);
 
   for (const titleRow of block.titleRows ?? []) {
     compileTableTitleRow(titleRow, context, cursor, builder, tableWidth, variables);
@@ -321,6 +339,13 @@ function compileTableBlock(
       builder.setColumnWidth(context.sheet.id, {
         column: cursor.column + columnOffset,
         width: column.width,
+      });
+    }
+
+    if (column.hidden !== undefined) {
+      builder.setColumnHidden(context.sheet.id, {
+        column: cursor.column + columnOffset,
+        hidden: column.hidden,
       });
     }
   }
@@ -360,6 +385,7 @@ function compileTableBlock(
     const rowIndex = cursor.row;
     compileTableDataRow(
       item as Record<string, unknown>,
+      dataIndex,
       context,
       cursor,
       builder,
@@ -367,8 +393,10 @@ function compileTableBlock(
       tableColumnIdMap,
       variables,
       block.bodyStyle,
+      dataIndex % 2 === 0 ? block.oddRowStyle : block.evenRowStyle,
       tableInlineStyle,
       block.bodyRowHeight,
+      block.rowHidden?.(item as Record<string, unknown>, dataIndex),
     );
     const renderedRow = {
       data: item as Record<string, unknown>,
@@ -376,6 +404,22 @@ function compileTableBlock(
     };
     currentRenderedRows.push(renderedRow);
     allRenderedRows.push(renderedRow);
+  }
+
+  for (const footerRow of footerRows) {
+    compileTableFooterRow(footerRow, {
+      allRows,
+      allRenderedRows,
+      builder,
+      context,
+      currentRenderedRows: allRenderedRows,
+      cursor,
+      dataIndex: block.data.length,
+      tableColumnIdMap,
+      tableWidth,
+      tableInlineStyle,
+      variables,
+    });
   }
 }
 
@@ -394,6 +438,7 @@ function compileTableTitleRow(
       interpolateCellValue(titleRow.value, variables),
       createFormulaCompileContext(context.formulaIds ?? new Map(), {
         currentSheetId: context.sheet.id,
+        namedRanges: context.namedRangeNames,
       }),
     ),
     style: titleRow.style,
@@ -420,6 +465,7 @@ function compileTableTitleRow(
 
 function compileTableDataRows(
   rows: Record<string, unknown>[],
+  firstDataIndex: number,
   context: SheetContext,
   cursor: LayoutCursor,
   builder: RenderPlanBuilder,
@@ -427,27 +473,32 @@ function compileTableDataRows(
   tableColumnIdMap: Map<string, number>,
   variables: VariableScope,
   bodyStyle?: StyleValue,
+  bandStyle?: StyleValue,
   inlineStyle?: CellStyleDefinition,
   bodyRowHeight?: number,
+  hidden?: boolean,
 ): void {
-  for (const rowData of rows) {
+  for (const [rowOffset, rowData] of rows.entries()) {
     const absoluteRow = cursor.row;
-    const formulaContext = createTableRowFormulaContext(
-      tableColumnIdMap,
-      absoluteRow,
-      cursor.column,
-      context,
-    );
+    const dataIndex = firstDataIndex + rowOffset;
+    const formulaContext = createTableRowFormulaContext(tableColumnIdMap, absoluteRow, cursor.column, context);
 
     for (const [columnOffset, column] of leafColumns.entries()) {
       const value = resolveTableCellValue(rowData, column);
       assertTableCellValue(value);
+      const compiledContent = compileCellContent(interpolateCellValue(value, variables), formulaContext);
+      const staticStyle = column.bodyStyle ?? column.style ?? bandStyle ?? bodyStyle;
 
       builder.addCell(context.sheet.id, {
         row: absoluteRow,
         column: cursor.column + columnOffset,
-        ...compileCellContent(interpolateCellValue(value, variables), formulaContext),
-        style: column.bodyStyle ?? column.style ?? bodyStyle,
+        ...compiledContent,
+        style: resolveCellStyle(
+          staticStyle,
+          column.styleResolver?.(compiledContent.value, rowData, dataIndex),
+          context,
+          `table column "${String(column.id ?? column.title)}"`,
+        ),
         inlineStyle,
       });
     }
@@ -459,12 +510,20 @@ function compileTableDataRows(
       });
     }
 
+    if (hidden === true) {
+      builder.setRowHidden(context.sheet.id, {
+        row: absoluteRow,
+        hidden,
+      });
+    }
+
     cursor.advanceRows();
   }
 }
 
 function compileTableDataRow(
   rowData: Record<string, unknown>,
+  dataIndex: number,
   context: SheetContext,
   cursor: LayoutCursor,
   builder: RenderPlanBuilder,
@@ -472,11 +531,14 @@ function compileTableDataRow(
   tableColumnIdMap: Map<string, number>,
   variables: VariableScope,
   bodyStyle?: StyleValue,
+  bandStyle?: StyleValue,
   inlineStyle?: CellStyleDefinition,
   bodyRowHeight?: number,
+  hidden?: boolean,
 ): void {
   compileTableDataRows(
     [rowData],
+    dataIndex,
     context,
     cursor,
     builder,
@@ -484,8 +546,10 @@ function compileTableDataRow(
     tableColumnIdMap,
     variables,
     bodyStyle,
+    bandStyle,
     inlineStyle,
     bodyRowHeight,
+    hidden,
   );
 }
 
@@ -537,13 +601,15 @@ function compileTableSectionRow(
     });
   }
 
+  if (sectionRow.hidden !== undefined) {
+    builder.setRowHidden(context.sheet.id, {
+      row: cursor.row,
+      hidden: sectionRow.hidden,
+    });
+  }
+
   for (const [cellIndex, cell] of sectionRow.cells.entries()) {
-    const columnOffset = resolveSectionCellColumnOffset(
-      cell,
-      cellIndex,
-      tableColumnIdMap,
-      occupiedColumns,
-    );
+    const columnOffset = resolveSectionCellColumnOffset(cell, cellIndex, tableColumnIdMap, occupiedColumns);
     const colSpan = resolveSectionCellColSpan(cell, columnOffset, tableWidth);
     const value = resolveSectionCellValue(cell, {
       rows: currentRenderedRows.map((row) => row.data),
@@ -553,12 +619,18 @@ function compileTableSectionRow(
     });
 
     assertTableCellValue(value);
+    const compiledContent = compileCellContent(interpolateCellValue(value, variables), formulaContext);
 
     builder.addCell(context.sheet.id, {
       row: cursor.row,
       column: cursor.column + columnOffset,
-      ...compileCellContent(interpolateCellValue(value, variables), formulaContext),
-      style: cell.style ?? sectionRow.style,
+      ...compiledContent,
+      style: resolveCellStyle(
+        cell.style ?? sectionRow.style,
+        cell.styleResolver?.(compiledContent.value),
+        context,
+        `table section cell ${cellIndex + 1}`,
+      ),
       inlineStyle: tableInlineStyle,
     });
 
@@ -599,9 +671,107 @@ function compileTableSectionRow(
   cursor.advanceRows();
 }
 
-function createTableInlineStyle(
-  border: TableBorderDefinition | undefined,
-): CellStyleDefinition | undefined {
+function compileTableFooterRow(
+  footerRow: TableFooterRow<Record<string, unknown>>,
+  options: CompileTableSectionRowContext,
+): void {
+  compileTableSectionRow(
+    {
+      type: 'section',
+      style: footerRow.style,
+      height: footerRow.height,
+      cells: footerRow.cells,
+    },
+    options,
+  );
+}
+
+function resolveTableFooterRows(
+  block: Extract<Block, { type: 'table' }>,
+  leafColumns: TableLeafColumn[],
+): TableFooterRow<Record<string, unknown>>[] {
+  if (block.footerRows) {
+    return [...block.footerRows] as TableFooterRow<Record<string, unknown>>[];
+  }
+
+  const hasSummary = leafColumns.some((column) => column.summary !== undefined);
+
+  if (!hasSummary) {
+    return [];
+  }
+
+  return [
+    {
+      style: block.summaryStyle,
+      cells: leafColumns.map((column) => {
+        if (column.summary === undefined) {
+          return { value: null };
+        }
+
+        if (!column.id) {
+          throw new ReportEngineError(`Summary column "${column.title}" must include an id.`);
+        }
+
+        return {
+          columnId: String(column.id),
+          style: block.summaryStyle,
+          value: createSummaryFormula(String(column.id), column.summary),
+        };
+      }),
+    },
+  ];
+}
+
+function createSummaryFormula(columnId: string, summary: NonNullable<TableLeafColumn['summary']>): CellContent {
+  if (summary && typeof summary === 'object') {
+    return summary;
+  }
+
+  const range = {
+    type: 'range' as const,
+    startId: columnId,
+    endId: columnId,
+    scope: 'allRows' as const,
+  };
+
+  switch (summary) {
+    case 'sum':
+      return { type: 'sum', range };
+    case 'count':
+      return { type: 'call', name: 'COUNT', args: [range] };
+    case 'average':
+      return { type: 'call', name: 'AVERAGE', args: [range] };
+    default:
+      return assertNeverSummary(summary);
+  }
+}
+
+function resolveCellStyle(
+  staticStyle: StyleValue | undefined,
+  dynamicStyle: StyleValue | undefined,
+  context: SheetContext,
+  label: string,
+): StyleValue | undefined {
+  if (dynamicStyle === undefined) {
+    return staticStyle;
+  }
+
+  if (typeof dynamicStyle === 'string') {
+    if (!context.styles || !Object.prototype.hasOwnProperty.call(context.styles, dynamicStyle)) {
+      throw new ReportEngineError(`${label} styleResolver returned unknown style "${dynamicStyle}".`);
+    }
+
+    return dynamicStyle;
+  }
+
+  if (typeof dynamicStyle !== 'object' || dynamicStyle === null || Array.isArray(dynamicStyle)) {
+    throw new ReportEngineError(`${label} styleResolver must return a style value.`);
+  }
+
+  return dynamicStyle;
+}
+
+function createTableInlineStyle(border: TableBorderDefinition | undefined): CellStyleDefinition | undefined {
   if (!border) {
     return undefined;
   }
@@ -639,9 +809,7 @@ function resolveSectionCellColumnOffset(
     const offset = tableColumnIdMap.get(cell.columnId);
 
     if (offset === undefined) {
-      throw new ReportEngineError(
-        `Table section row references unknown columnId "${cell.columnId}".`,
-      );
+      throw new ReportEngineError(`Table section row references unknown columnId "${cell.columnId}".`);
     }
 
     return offset;
@@ -740,16 +908,9 @@ function createTableRowFormulaContext(
         column: firstColumn + columnOffset,
       });
     },
-    resolveRangeIds(
-      startId: string,
-      endId: string,
-      sheetId?: string,
-      scope?: FormulaRangeScope,
-    ): string {
+    resolveRangeIds(startId: string, endId: string, sheetId?: string, scope?: FormulaRangeScope): string {
       if (scope) {
-        throw new ReportEngineError(
-          'Scoped formula ranges are only supported inside table section rows.',
-        );
+        throw new ReportEngineError('Scoped formula ranges are only supported inside table section rows.');
       }
 
       if (sheetId && sheetId !== context.sheet.id) {
@@ -768,10 +929,7 @@ function createTableRowFormulaContext(
           throw new ReportEngineError('Formula range end id must resolve after start id.');
         }
 
-        return [
-          formatCellReference(start, context.sheet.id),
-          formatCellReference(end, context.sheet.id),
-        ].join(':');
+        return [formatCellReference(start, context.sheet.id), formatCellReference(end, context.sheet.id)].join(':');
       }
 
       const startColumnOffset = columnIdMap.get(startId);
@@ -794,6 +952,13 @@ function createTableRowFormulaContext(
         formatCellAddress({ row, column: firstColumn + endColumnOffset }),
       ].join(':');
     },
+    resolveNamedRange(name: string): string {
+      if (context.namedRangeNames && !context.namedRangeNames.has(name)) {
+        throw new ReportEngineError(`Formula references unknown named range "${name}".`);
+      }
+
+      return name;
+    },
   };
 }
 
@@ -809,20 +974,14 @@ function createTableSectionRowFormulaContext(
 
   return {
     resolveCellId: rowContext.resolveCellId,
-    resolveRangeIds(
-      startId: string,
-      endId: string,
-      sheetId?: string,
-      scope?: FormulaRangeScope,
-    ): string {
+    resolveNamedRange: rowContext.resolveNamedRange,
+    resolveRangeIds(startId: string, endId: string, sheetId?: string, scope?: FormulaRangeScope): string {
       if (!scope) {
         return rowContext.resolveRangeIds(startId, endId, sheetId);
       }
 
       if (sheetId && sheetId !== context.sheet.id) {
-        throw new ReportEngineError(
-          'Scoped formula ranges must reference the current table sheet.',
-        );
+        throw new ReportEngineError('Scoped formula ranges must reference the current table sheet.');
       }
 
       const rows = scope === 'allRows' ? allRows : currentRows;
@@ -845,20 +1004,12 @@ function createTableSectionRowFormulaContext(
         return '0';
       }
 
-      return formatTableRowRanges(
-        rows,
-        firstColumn + startColumnOffset,
-        firstColumn + endColumnOffset,
-      );
+      return formatTableRowRanges(rows, firstColumn + startColumnOffset, firstColumn + endColumnOffset);
     },
   };
 }
 
-function formatTableRowRanges(
-  rows: RenderedTableDataRow[],
-  startColumn: number,
-  endColumn: number,
-): string {
+function formatTableRowRanges(rows: RenderedTableDataRow[], startColumn: number, endColumn: number): string {
   const sortedRows = [...rows].sort((left, right) => left.row - right.row);
   const ranges: string[] = [];
   let startRow = sortedRows[0]?.row;
@@ -885,23 +1036,14 @@ function formatTableRowRanges(
   return ranges.join(',');
 }
 
-function formatTableRowRange(
-  startRow: number,
-  endRow: number,
-  startColumn: number,
-  endColumn: number,
-): string {
+function formatTableRowRange(startRow: number, endRow: number, startColumn: number, endColumn: number): string {
   return [
     formatCellAddress({ row: startRow, column: startColumn }),
     formatCellAddress({ row: endRow, column: endColumn }),
   ].join(':');
 }
 
-function registerCellId(
-  idMap: Map<string, CellAddress>,
-  registryKey: string,
-  address: CellAddress,
-): void {
+function registerCellId(idMap: Map<string, CellAddress>, registryKey: string, address: CellAddress): void {
   if (idMap.has(registryKey)) {
     throw new ReportEngineError(`Duplicate formula cell id "${registryKey}".`);
   }
@@ -975,10 +1117,7 @@ function flattenLeafColumns(columns: readonly TableColumnNode[]): TableLeafColum
   });
 }
 
-function buildHeaderMatrix(
-  columns: readonly TableColumnNode[],
-  headerDepth: number,
-): HeaderMatrixCell[] {
+function buildHeaderMatrix(columns: readonly TableColumnNode[], headerDepth: number): HeaderMatrixCell[] {
   const cells: HeaderMatrixCell[] = [];
   let columnOffset = 0;
 
@@ -1042,4 +1181,8 @@ function countLeafColumns(columns: readonly TableColumnNode[]): number {
 
     return total + 1;
   }, 0);
+}
+
+function assertNeverSummary(value: never): never {
+  throw new ReportEngineError(`Unsupported table summary "${String(value)}".`);
 }

@@ -1,6 +1,14 @@
 export { defineWorkbook, isWorkbookDefinition } from './core/workbook';
 
-export { ReportEngineError } from './core/errors';
+export { f } from './formula';
+
+export {
+  CompileError,
+  FormulaError,
+  RenderError,
+  ReportEngineError,
+  ValidationError,
+} from './core/errors';
 
 export type {
   Block,
@@ -9,6 +17,11 @@ export type {
   CellContent,
   CellStyleDefinition,
   CellValue,
+  AverageFormulaDefinition,
+  ConcatenateFormulaDefinition,
+  CountAFormulaDefinition,
+  CountFormulaDefinition,
+  DividerBlock,
   FormulaBinaryOperator,
   FormulaDefinition,
   FormulaRangeReference,
@@ -17,12 +30,19 @@ export type {
   GridCell,
   GridRow,
   IfFormulaDefinition,
+  IfErrorFormulaDefinition,
   LiteralFormulaDefinition,
+  MaxFormulaDefinition,
+  MinFormulaDefinition,
+  NamedRangeDefinition,
+  NamedRangeFormulaDefinition,
   RawFormulaDefinition,
   RangeFormulaDefinition,
   RefFormulaDefinition,
+  RepeatBlock,
   RoundFormulaDefinition,
   SheetDefinition,
+  SheetFreezePane,
   SpacerBlock,
   StyleReference,
   StyleRegistry,
@@ -31,6 +51,7 @@ export type {
   TableBlock,
   TableBorderDefinition,
   TableColumn,
+  TableFooterRow,
   TableSectionCell,
   TableSectionCellAccessor,
   TableSectionCellContext,
@@ -40,6 +61,7 @@ export type {
   TextBlock,
   TitleBlock,
   TypedFormulaDefinition,
+  VlookupFormulaDefinition,
   TypedWorkbookDefinition,
   WorkbookDefinition,
   WorkbookMetadata,
@@ -51,6 +73,7 @@ export type { CompileWorkbookOptions, RenderContext, VariableScope } from './com
 
 export type {
   RenderCell,
+  RenderColumnVisibility,
   RenderColumnWidth,
   RenderCommand,
   RenderLink,
@@ -59,6 +82,9 @@ export type {
   RenderPlanSheet,
   RenderRow,
   RenderRowHeight,
+  RenderRowVisibility,
+  RenderSheetView,
+  ResolvedNamedRange,
 } from './compiler/render-plan';
 
 export { renderWorkbook } from './renderer';

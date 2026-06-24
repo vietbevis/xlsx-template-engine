@@ -16,6 +16,7 @@ export interface FormulaCompileContext {
     sheetId?: string,
     scope?: FormulaRangeScope,
   ): string;
+  resolveNamedRange?(name: string): string;
 }
 
 export function compileCellContent(
@@ -44,6 +45,8 @@ export function compileFormula(
       return compileLiteralFormula(formula.value);
     case 'ref':
       return requireCompileContext(context).resolveCellId(formula.id, formula.sheetId);
+    case 'namedRange':
+      return resolveNamedRange(formula.name, context);
     case 'range':
       return requireCompileContext(context).resolveRangeIds(
         formula.startId,
@@ -67,6 +70,22 @@ export function compileFormula(
       ].join('');
     case 'call':
       return `${compileFunctionName(formula.name)}(${formula.args.map((arg) => compileFormula(arg, context)).join(',')})`;
+    case 'max':
+      return `MAX(${formula.values.map((value) => compileFormula(value, context)).join(',')})`;
+    case 'min':
+      return `MIN(${formula.values.map((value) => compileFormula(value, context)).join(',')})`;
+    case 'average':
+      return `AVERAGE(${compileRangeReference(formula.range, context)})`;
+    case 'count':
+      return `COUNT(${compileRangeReference(formula.range, context)})`;
+    case 'counta':
+      return `COUNTA(${compileRangeReference(formula.range, context)})`;
+    case 'concatenate':
+      return `CONCATENATE(${formula.values.map((value) => compileFormula(value, context)).join(',')})`;
+    case 'iferror':
+      return `IFERROR(${compileFormula(formula.value, context)},${compileFormula(formula.fallback, context)})`;
+    case 'vlookup':
+      return `VLOOKUP(${compileFormula(formula.lookup, context)},${resolveNamedRange(formula.rangeName, context)},${formula.colIndex},${formula.exactMatch === false ? 1 : 0})`;
     case 'binary':
       return `(${compileFormula(formula.left, context)}${compileBinaryOperator(formula.operator)}${compileFormula(formula.right, context)})`;
     default:
@@ -79,9 +98,26 @@ export function isFormulaDefinition(value: unknown): value is FormulaDefinition 
     return false;
   }
 
-  return ['raw', 'literal', 'sum', 'round', 'if', 'call', 'binary', 'range', 'ref'].includes(
-    value.type,
-  );
+  return [
+    'raw',
+    'literal',
+    'sum',
+    'round',
+    'if',
+    'call',
+    'binary',
+    'range',
+    'ref',
+    'namedRange',
+    'max',
+    'min',
+    'average',
+    'count',
+    'counta',
+    'concatenate',
+    'iferror',
+    'vlookup',
+  ].includes(value.type);
 }
 
 export function createFormulaCompileContext(
@@ -129,11 +165,19 @@ export function createFormulaCompileContext(
 
       return `${formatCellReference(start, options.currentSheetId)}:${formatCellReference(end, options.currentSheetId)}`;
     },
+    resolveNamedRange(name: string): string {
+      if (options.namedRanges && !options.namedRanges.has(name)) {
+        throw new ReportEngineError(`Formula references unknown named range "${name}".`);
+      }
+
+      return name;
+    },
   };
 }
 
 export interface FormulaCompileContextOptions {
   currentSheetId?: string;
+  namedRanges?: ReadonlySet<string>;
 }
 
 export interface CellAddress {
@@ -190,6 +234,24 @@ function compileSumArguments(
   }
 
   return args.join(',');
+}
+
+function compileRangeReference(
+  range: FormulaRangeReference,
+  context: FormulaCompileContext | undefined,
+): string {
+  return requireCompileContext(context).resolveRangeIds(
+    range.startId,
+    range.endId,
+    range.sheetId,
+    range.scope,
+  );
+}
+
+function resolveNamedRange(name: string, context: FormulaCompileContext | undefined): string {
+  const compileContext = requireCompileContext(context);
+
+  return compileContext.resolveNamedRange ? compileContext.resolveNamedRange(name) : name;
 }
 
 export function createFormulaId(sheetId: string | undefined, id: string): string {

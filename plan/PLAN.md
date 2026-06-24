@@ -4,7 +4,9 @@
 
 - Triển khai lần lượt các nhóm mở rộng production-facing, dùng dialect hiện tại của engine là `id/startId/endId/columnId`, không quay lại `key`.
 - Bỏ qua `ImageBlock` và `ChartBlock` theo quyết định mới của bạn.
-- Ưu tiên P0/P1 trước: error hierarchy, freeze pane, page setup, table footer/summary, conditional style, formula helpers/types.
+- Ưu tiên P0/P1 trước: error hierarchy, freeze pane, table footer/summary, conditional style, formula helpers/types.
+- Bỏ qua `pageSetup`, print area, repeat print rows và các setting in ấn vì engine chạy server-side, không cần tối ưu luồng in trực tiếp.
+- Sau khi hoàn tất P0/P1, thì đặc biệt triển khai chi tiết P2
 - Mỗi cụm feature phải có unit/integration test, type-safety test nếu đổi public API, và workbook artifact inspectable khi output user-facing.
 
 ## Phase 1 — P0 Foundation
@@ -19,12 +21,9 @@
   - Thêm `RenderPlanSheet.views` hoặc field tương đương.
   - ExcelJS adapter map sang `views: [{ state: 'frozen', xSplit, ySplit }]` khi tạo worksheet.
   - Validate rows/columns là positive integer nếu có.
-- Page setup:
-  - Thêm `PageSetupBlock` vào `Block`, không consume row.
-  - API dùng `id`: `printArea?: { startId: string; endId: string }`.
-  - Compiler resolve print area sau khi có formula id registry của sheet.
-  - Adapter map `paperSize`, `orientation`, `fitToPage`, `fitToWidth`, `fitToHeight`, `margins`, `printArea`, `repeatRows` sang ExcelJS `pageSetup`.
-  - Validation reject multiple incompatible page setup blocks per sheet only if they define conflicting fields; otherwise last block wins is not allowed.
+- Page setup / print:
+  - Không triển khai trong rollout này.
+  - Không thêm `PageSetupBlock`, `printArea`, `repeatRows`, margin/fit-to-page hoặc mapping ExcelJS `pageSetup`.
 
 ## Phase 2 — P1 Table and Style
 
@@ -52,9 +51,9 @@
   - Compiler creates one footer row when at least one leaf column has summary and no explicit summary footer conflict.
   - Summary formulas target the column id across all visible and hidden data rows; hidden rows remain included by default.
 
-## Phase 3 — Formula Engine
+## Phase 3 — P2 Formula Engine
 
-[Chi tiết plan này trong file](./plan-formula-builder.md)
+[Chi tiết plan cho phase này trong file](./plan-formula-builder.md)
 
 ## Phase 4 — Block System Without Image/Chart
 
@@ -100,10 +99,10 @@
 
 - Run after each phase: `npm run typecheck`, `npm run typecheck:tests`, `npm test`, `npm run lint`, `npm run build`, `git diff --check`.
 - Add type-safety assertions for all new public fields and old `key` examples staying rejected.
-- Add ExcelJS read-back tests for freeze panes, page setup, print area, repeat rows, hidden rows/columns, named ranges, formula cache, footer rows, summary formulas.
+- Add ExcelJS read-back tests for freeze panes, hidden rows/columns, named ranges, formula cache, footer rows, summary formulas.
 - Add adapter tests for both streaming-compatible features and non-streaming-only behavior where relevant.
 - Add generated workbook artifacts under `output/` for P0/P1 user-facing output, especially page setup/freeze/table footer examples.
-- Update `src/examples/overtime-report.ts` to use freeze panes, page setup, footer/summary shorthand, and conditional styles.
+- Update `src/examples/overtime-report.ts` to use freeze panes, footer/summary shorthand, and conditional styles.
 
 ## Assumptions
 

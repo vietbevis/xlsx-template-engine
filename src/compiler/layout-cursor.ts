@@ -1,4 +1,4 @@
-import { ReportEngineError } from '../core/errors';
+import { assertPositiveInteger } from '../helpers/utils';
 
 export class LayoutCursor {
   constructor(
@@ -21,11 +21,5 @@ export class LayoutCursor {
 
   clone(): LayoutCursor {
     return new LayoutCursor(this.row, this.column);
-  }
-}
-
-function assertPositiveInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new ReportEngineError(`Layout cursor ${label} must be a positive integer.`);
   }
 }
