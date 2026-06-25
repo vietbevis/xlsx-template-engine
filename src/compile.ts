@@ -1,11 +1,11 @@
+import ExcelJS from 'exceljs';
+import type { Writable } from 'stream';
 import { AddressRegistry } from './address-registry';
 import { compileBlock } from './block-compiler';
-import type { Writable } from 'stream';
 import { CompileError, FormulaError, ReportEngineError, ValidationError } from './errors';
 import { cloneStylePart } from './helpers/style';
 import { flattenColumns } from './helpers/table';
-import ExcelJS from 'exceljs';
-import type { Block, GridRow, SheetDefinition, WorkbookDefinition } from './types';
+import type { Block, SheetDefinition, WorkbookDefinition } from './types';
 import { validateWorkbookDefinition } from './validation';
 export interface CompileWorkbookOptions {}
 
@@ -32,11 +32,7 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
   };
 
   for (const sheet of workbook.sheets) {
-    const worksheet = excelWorkbook.addWorksheet(sheet.name, {
-      views: sheet.freezePane
-        ? [{ state: 'frozen' as const, xSplit: sheet.freezePane.columns ?? 0, ySplit: sheet.freezePane.rows ?? 0 }]
-        : undefined,
-    });
+    const worksheet = excelWorkbook.addWorksheet(sheet.name);
 
     const context = {
       workbook,
@@ -80,20 +76,17 @@ function measureSheetColumnCount(sheet: SheetDefinition): number {
 function measureBlockColumnCount(block: Block): number {
   switch (block.type) {
     case 'grid':
-      return Math.max(1, ...block.rows.map(measureGridRowColumnCount));
+      return Math.max(
+        1,
+        ...block.rows.map((row) =>
+          row.cells.reduce((width, cell) => width + (cell.colSpan === 'remaining' ? 1 : (cell.colSpan ?? 1)), 0),
+        ),
+      );
     case 'table':
       return flattenColumns(block.columns).length;
     default:
-      return assertNeverBlock(block);
+      throw new CompileError(`Unsupported block type "${(block as Block).type}".`);
   }
-}
-
-function measureGridRowColumnCount(row: GridRow): number {
-  return row.cells.reduce((width, cell) => width + (cell.colSpan === 'remaining' ? 1 : (cell.colSpan ?? 1)), 0);
-}
-
-function assertNeverBlock(block: never): never {
-  throw new CompileError(`Unsupported block type "${(block as Block).type}".`);
 }
 
 export interface WorkbookRenderOptions {}

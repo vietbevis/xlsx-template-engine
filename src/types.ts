@@ -63,13 +63,7 @@ export interface WorkbookDefinition {
 export interface SheetDefinition {
   id: string;
   name: string;
-  freezePane?: SheetFreezePane;
   blocks: readonly Block[];
-}
-
-export interface SheetFreezePane {
-  rows?: number;
-  columns?: number;
 }
 
 export type Block = GridBlock | TableBlock<any>;

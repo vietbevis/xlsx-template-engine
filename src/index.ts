@@ -17,7 +17,6 @@ export type {
   RangeFormulaDefinition,
   RefFormulaDefinition,
   SheetDefinition,
-  SheetFreezePane,
   StyleReference,
   StyleRegistry,
   StyleValue,
