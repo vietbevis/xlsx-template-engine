@@ -4,7 +4,7 @@ import type {
   FormulaTemplateDefinition,
   RangeFormulaDefinition,
   RefFormulaDefinition,
-} from './types';
+} from '../types';
 
 export function f(strings: TemplateStringsArray, ...exprs: FormulaExpression[]): FormulaTemplateDefinition {
   return { type: 'formula_template', strings, exprs };

@@ -1,12 +1,14 @@
 import type ExcelJS from 'exceljs';
-import { f } from '../formula';
 import { ReportEngineError } from '../errors';
+import { f } from '../formula/formula-builder';
+import { FormulaCompiler } from '../formula/formula-compiler';
 import type {
   Block,
   CellContent,
   CellStyleDefinition,
   TableBorderDefinition,
   TableColumnNode,
+  TableFooterRow,
   TableLeafColumn,
   TableSectionCell,
   TableSectionCellContext,
@@ -119,6 +121,56 @@ export function createSummaryFormula(columnId: string, summary: NonNullable<Tabl
     default:
       return assertNeverSummary(summary);
   }
+}
+
+export function resolveFooterRows(
+  block: Extract<Block, { type: 'table' }>,
+  leafColumns: TableLeafColumn[],
+): TableFooterRow[] {
+  if (block.footerRows) return [...block.footerRows] as TableFooterRow[];
+
+  const hasSummary = leafColumns.some((col) => col.summary !== undefined);
+  if (!hasSummary) return [];
+
+  return [
+    {
+      style: block.summaryStyle,
+      cells: leafColumns.map((col) => {
+        if (col.summary === undefined) return { value: null };
+
+        if (!col.id) {
+          throw new ReportEngineError(`Summary column "${col.title}" must include an id.`);
+        }
+
+        return {
+          columnId: String(col.id),
+          style: block.summaryStyle,
+          value: createSummaryFormula(String(col.id), col.summary),
+        };
+      }),
+    },
+  ];
+}
+
+export function resolveTableCellValue(row: Record<string, unknown>, col: TableLeafColumn): unknown {
+  if (col.accessor) return col.accessor(row);
+  const value = col.id ? row[String(col.id)] : null;
+  return value === undefined ? null : value;
+}
+
+const VALID_CELL_TYPES = new Set(['string', 'number', 'boolean']);
+
+export function assertTableCellValue(value: unknown): asserts value is CellContent {
+  if (
+    value === null ||
+    VALID_CELL_TYPES.has(typeof value) ||
+    value instanceof Date ||
+    FormulaCompiler.isFormulaDefinition(value)
+  ) {
+    return;
+  }
+
+  throw new ReportEngineError('Table cell values must resolve to a supported cell value.');
 }
 
 // ─── Private helpers ──────────────────────────────────────────────────────────

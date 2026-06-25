@@ -1,6 +1,6 @@
 import { ValidationError } from './errors';
-import { isPlainObject } from './helpers/common';
-import { calculateTableHeaderDepth } from './helpers/table';
+import { isPlainObject } from './utils/common';
+import { calculateTableHeaderDepth } from './utils/table-utils';
 import type { WorkbookDefinition } from './types';
 
 // ─── Public entry point ───────────────────────────────────────────────────────

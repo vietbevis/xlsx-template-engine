@@ -1,5 +1,5 @@
-import { CompileError } from './errors';
-import type { CellAddress } from './formula-engine';
+import { CompileError } from '../errors';
+import type { CellAddress } from './formula-compiler';
 
 /**
  * Registry tích lũy địa chỉ ô (row, column) theo id trong suốt quá trình

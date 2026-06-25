@@ -1,6 +1,6 @@
 import type ExcelJS from 'exceljs';
-import { cloneStylePart } from './utils';
 import type { CellStyleDefinition } from '../types';
+import { cloneStylePart } from '../styles/style-resolver';
 
 export function writeCell(
   worksheet: ExcelJS.Worksheet,

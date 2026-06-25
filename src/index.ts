@@ -1,4 +1,5 @@
-export { f } from './formula';
+export { f } from './formula/formula-builder';
+export { FormulaCompiler } from './formula/formula-compiler';
 
 export { CompileError, FormulaError, RenderError, ReportEngineError, ValidationError } from './errors';
 
@@ -33,8 +34,6 @@ export type {
   WorkbookMetadata,
 } from './types';
 
-export type { CompileWorkbookOptions, WorkbookRenderer, WorkbookRenderOptions } from './compile';
-
-export { compileWorkbook, renderWorkbook } from './compile';
+export type { CompileWorkbookOptions, WorkbookRenderer, WorkbookRenderOptions } from './compiler/workbook-compiler';
+export { WorkbookCompiler, compileWorkbook, renderWorkbook } from './compiler/workbook-compiler';
 export { dividerBlock, spacerBlock, textBlock } from './factories';
-export { isFormulaDefinition } from './formula-engine';

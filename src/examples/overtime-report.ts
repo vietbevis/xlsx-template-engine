@@ -1,7 +1,7 @@
 import { mkdir } from 'node:fs/promises';
-import { renderWorkbook } from '../compile';
+import { renderWorkbook } from '../compiler/workbook-compiler';
 import { textBlock } from '../factories';
-import { f } from '../formula';
+import { f } from '../formula/formula-builder';
 import type { WorkbookDefinition } from '../types';
 
 const danhSachDoiTuong = [
