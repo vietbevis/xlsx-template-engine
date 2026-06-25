@@ -4,7 +4,6 @@ export type CellValue = Exclude<ExcelJS.CellValue, undefined>;
 
 export type CellContent = CellValue | FormulaDefinition;
 
-/** Column node lá (không có children) trong cây cột của table. */
 export type TableColumnNode = Extract<Block, { type: 'table' }>['columns'][number];
 export type TableLeafColumn = TableColumnNode & { children?: undefined };
 
@@ -175,39 +174,6 @@ export interface WriterCell {
 export interface WriterLink {
   target: string;
   tooltip?: string;
-}
-
-export interface WriterMergeRange {
-  startRow: number;
-  startColumn: number;
-  endRow: number;
-  endColumn: number;
-}
-
-export interface WriterColumnWidth {
-  column: number;
-  width: number;
-}
-
-export interface WriterColumnVisibility {
-  column: number;
-  hidden: boolean;
-}
-
-export interface WriterRowHeight {
-  row: number;
-  height: number;
-}
-
-export interface WriterRowVisibility {
-  row: number;
-  hidden: boolean;
-}
-
-export interface WriterSheetView {
-  state: 'frozen';
-  xSplit?: number;
-  ySplit?: number;
 }
 
 // ─── Table column ─────────────────────────────────────────────────────────────
