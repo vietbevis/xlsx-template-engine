@@ -1,4 +1,4 @@
-import { assertPositiveInteger } from '../helpers/utils';
+import { assertPositiveInteger } from './helpers/utils';
 
 export class LayoutCursor {
   constructor(

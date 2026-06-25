@@ -1,13 +1,11 @@
-import { ReportEngineError } from '../core/errors';
+import { ReportEngineError } from './errors';
 import type { RenderMergeRange } from './render-plan';
 
 export interface MergeRange extends RenderMergeRange {
   sheetId: string;
 }
 
-export type NormalizedMergeRange =
-  | { type: 'skip-single-cell' }
-  | { type: 'range'; range: MergeRange };
+export type NormalizedMergeRange = { type: 'skip-single-cell' } | { type: 'range'; range: MergeRange };
 
 /**
  * Chuẩn hóa một merge range từ render plan thành dạng có thể sử dụng để ghi vào sheet.
@@ -17,10 +15,7 @@ export type NormalizedMergeRange =
  *   trả về `skip-single-cell` để bỏ qua (không cần merge ô đơn).
  * - Ngược lại, gắn thêm `sheetId` và trả về range hợp lệ.
  */
-export function normalizeMergeRange(
-  sheetId: string,
-  range: RenderMergeRange,
-): NormalizedMergeRange {
+export function normalizeMergeRange(sheetId: string, range: RenderMergeRange): NormalizedMergeRange {
   assertPositiveInteger(range.startRow, 'merge start row');
   assertPositiveInteger(range.startColumn, 'merge start column');
   assertPositiveInteger(range.endRow, 'merge end row');
@@ -53,10 +48,7 @@ export function normalizeMergeRange(
  * Chỉ so sánh các range cùng `sheetId`. Nếu phát hiện chồng lấp, ném lỗi
  * kèm thông tin tọa độ của cả hai range để dễ debug.
  */
-export function assertMergeDoesNotOverlap(
-  candidate: MergeRange,
-  existingRanges: MergeRange[],
-): void {
+export function assertMergeDoesNotOverlap(candidate: MergeRange, existingRanges: MergeRange[]): void {
   const overlappingRange = existingRanges.find(
     (existing) => existing.sheetId === candidate.sheetId && rangesOverlap(existing, candidate),
   );

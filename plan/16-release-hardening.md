@@ -17,7 +17,7 @@ Them examples chay bang `tsx`:
 ## Documentation
 
 - README mo ta engine moi, khong con mo ta nhu template filler.
-- API docs cho `defineWorkbook`, `renderWorkbook`, blocks, styles, formulas.
+- API docs cho workbook definition, `renderWorkbook`, blocks, styles, formulas.
 - Unsupported features ro rang:
   - no auto-generated columns
   - no auto width

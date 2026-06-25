@@ -21,7 +21,7 @@ Chuyen repo tu template filler hien tai sang nen tang thu vien report engine co 
 ## Public API Draft
 
 ```ts
-const workbook = defineWorkbook({
+const workbook = {
   metadata: { title: "Report" },
   sheets: [
     {
@@ -30,7 +30,7 @@ const workbook = defineWorkbook({
       blocks: [],
     },
   ],
-});
+};
 
 await renderWorkbook(workbook).writeFile("report.xlsx");
 ```
@@ -40,8 +40,8 @@ await renderWorkbook(workbook).writeFile("report.xlsx");
 ## Implementation Checklist
 
 - Tao domain type toi thieu cho workbook, sheet, block placeholder.
-- Tao `defineWorkbook()` de normalize va validate shape co ban.
 - Tao `renderWorkbook()` facade nhan workbook definition.
+- Validate workbook khi compile/render, khong can wrapper tao workbook rieng.
 - Tao renderer stub co `writeFile`, `writeBuffer`, `writeStream` nhung chi implement muc an toan toi thieu khi phase 2/3 san sang.
 - Dam bao `src/index.ts` chi export API du kien dung lau dai.
 

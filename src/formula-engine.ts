@@ -1,22 +1,16 @@
-import { ReportEngineError } from '../core/errors';
+import { ReportEngineError } from './errors';
 import type {
   CellContent,
   FormulaBinaryOperator,
   FormulaDefinition,
   FormulaRangeReference,
   FormulaRangeScope,
-} from '../core/types';
+} from './types';
 import type { RenderCell } from './render-plan';
 
 export interface FormulaCompileContext {
   resolveCellId(id: string, sheetId?: string): string;
-  resolveRangeIds(
-    startId: string,
-    endId: string,
-    sheetId?: string,
-    scope?: FormulaRangeScope,
-  ): string;
-  resolveNamedRange?(name: string): string;
+  resolveRangeIds(startId: string, endId: string, sheetId?: string, scope?: FormulaRangeScope): string;
 }
 
 export function compileCellContent(
@@ -34,10 +28,7 @@ export function compileCellContent(
   return { formula: compileFormula(content, context) };
 }
 
-export function compileFormula(
-  formula: FormulaDefinition,
-  context?: FormulaCompileContext,
-): string {
+export function compileFormula(formula: FormulaDefinition, context?: FormulaCompileContext): string {
   switch (formula.type) {
     case 'raw':
       return compileRawFormula(formula.expression);
@@ -45,8 +36,6 @@ export function compileFormula(
       return compileLiteralFormula(formula.value);
     case 'ref':
       return requireCompileContext(context).resolveCellId(formula.id, formula.sheetId);
-    case 'namedRange':
-      return resolveNamedRange(formula.name, context);
     case 'range':
       return requireCompileContext(context).resolveRangeIds(
         formula.startId,
@@ -84,8 +73,6 @@ export function compileFormula(
       return `CONCATENATE(${formula.values.map((value) => compileFormula(value, context)).join(',')})`;
     case 'iferror':
       return `IFERROR(${compileFormula(formula.value, context)},${compileFormula(formula.fallback, context)})`;
-    case 'vlookup':
-      return `VLOOKUP(${compileFormula(formula.lookup, context)},${resolveNamedRange(formula.rangeName, context)},${formula.colIndex},${formula.exactMatch === false ? 1 : 0})`;
     case 'binary':
       return `(${compileFormula(formula.left, context)}${compileBinaryOperator(formula.operator)}${compileFormula(formula.right, context)})`;
     default:
@@ -108,7 +95,6 @@ export function isFormulaDefinition(value: unknown): value is FormulaDefinition 
     'binary',
     'range',
     'ref',
-    'namedRange',
     'max',
     'min',
     'average',
@@ -116,7 +102,6 @@ export function isFormulaDefinition(value: unknown): value is FormulaDefinition 
     'counta',
     'concatenate',
     'iferror',
-    'vlookup',
   ].includes(value.type);
 }
 
@@ -135,16 +120,9 @@ export function createFormulaCompileContext(
 
       return formatCellReference(address, options.currentSheetId);
     },
-    resolveRangeIds(
-      startId: string,
-      endId: string,
-      sheetId?: string,
-      scope?: FormulaRangeScope,
-    ): string {
+    resolveRangeIds(startId: string, endId: string, sheetId?: string, scope?: FormulaRangeScope): string {
       if (scope) {
-        throw new ReportEngineError(
-          'Scoped formula ranges are only supported inside table section rows.',
-        );
+        throw new ReportEngineError('Scoped formula ranges are only supported inside table section rows.');
       }
 
       const targetSheetId = sheetId ?? options.currentSheetId;
@@ -165,19 +143,11 @@ export function createFormulaCompileContext(
 
       return `${formatCellReference(start, options.currentSheetId)}:${formatCellReference(end, options.currentSheetId)}`;
     },
-    resolveNamedRange(name: string): string {
-      if (options.namedRanges && !options.namedRanges.has(name)) {
-        throw new ReportEngineError(`Formula references unknown named range "${name}".`);
-      }
-
-      return name;
-    },
   };
 }
 
 export interface FormulaCompileContextOptions {
   currentSheetId?: string;
-  namedRanges?: ReadonlySet<string>;
 }
 
 export interface CellAddress {
@@ -202,9 +172,7 @@ export function formatCellReference(address: CellAddress, currentSheetId?: strin
   }
 
   if (!address.sheetName) {
-    throw new ReportEngineError(
-      `Formula reference for sheet "${address.sheetId}" is missing sheet name.`,
-    );
+    throw new ReportEngineError(`Formula reference for sheet "${address.sheetId}" is missing sheet name.`);
   }
 
   return `${quoteSheetName(address.sheetName)}!${localAddress}`;
@@ -217,14 +185,7 @@ function compileSumArguments(
 ): string {
   const args = [
     ...(range
-      ? [
-          requireCompileContext(context).resolveRangeIds(
-            range.startId,
-            range.endId,
-            range.sheetId,
-            range.scope,
-          ),
-        ]
+      ? [requireCompileContext(context).resolveRangeIds(range.startId, range.endId, range.sheetId, range.scope)]
       : []),
     ...(values ? values.map((value) => compileFormula(value, context)) : []),
   ];
@@ -236,22 +197,8 @@ function compileSumArguments(
   return args.join(',');
 }
 
-function compileRangeReference(
-  range: FormulaRangeReference,
-  context: FormulaCompileContext | undefined,
-): string {
-  return requireCompileContext(context).resolveRangeIds(
-    range.startId,
-    range.endId,
-    range.sheetId,
-    range.scope,
-  );
-}
-
-function resolveNamedRange(name: string, context: FormulaCompileContext | undefined): string {
-  const compileContext = requireCompileContext(context);
-
-  return compileContext.resolveNamedRange ? compileContext.resolveNamedRange(name) : name;
+function compileRangeReference(range: FormulaRangeReference, context: FormulaCompileContext | undefined): string {
+  return requireCompileContext(context).resolveRangeIds(range.startId, range.endId, range.sheetId, range.scope);
 }
 
 export function createFormulaId(sheetId: string | undefined, id: string): string {

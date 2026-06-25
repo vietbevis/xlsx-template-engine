@@ -1,14 +1,6 @@
-export { defineWorkbook, isWorkbookDefinition } from './core/workbook';
-
 export { f } from './formula';
 
-export {
-  CompileError,
-  FormulaError,
-  RenderError,
-  ReportEngineError,
-  ValidationError,
-} from './core/errors';
+export { CompileError, FormulaError, RenderError, ReportEngineError, ValidationError } from './errors';
 
 export type {
   Block,
@@ -34,12 +26,9 @@ export type {
   LiteralFormulaDefinition,
   MaxFormulaDefinition,
   MinFormulaDefinition,
-  NamedRangeDefinition,
-  NamedRangeFormulaDefinition,
   RawFormulaDefinition,
   RangeFormulaDefinition,
   RefFormulaDefinition,
-  RepeatBlock,
   RoundFormulaDefinition,
   SheetDefinition,
   SheetFreezePane,
@@ -52,24 +41,24 @@ export type {
   TableBorderDefinition,
   TableColumn,
   TableFooterRow,
+  TableGroup,
+  TableGroupsBlock,
   TableSectionCell,
   TableSectionCellAccessor,
   TableSectionCellContext,
   TableSectionRow,
-  TableDataItem,
-  TableTitleRow,
   TextBlock,
   TitleBlock,
   TypedFormulaDefinition,
-  VlookupFormulaDefinition,
-  TypedWorkbookDefinition,
   WorkbookDefinition,
   WorkbookMetadata,
-} from './core/types';
+} from './types';
 
-export { compileWorkbookToRenderPlan, isFormulaDefinition } from './compiler';
+export { compileWorkbookToRenderPlan } from './compile';
+export { isFormulaDefinition } from './formula-engine';
 
-export type { CompileWorkbookOptions, RenderContext, VariableScope } from './compiler';
+export type { CompileWorkbookOptions } from './compile';
+export type { RenderContext, VariableScope } from './variable-engine';
 
 export type {
   RenderCell,
@@ -84,8 +73,7 @@ export type {
   RenderRowHeight,
   RenderRowVisibility,
   RenderSheetView,
-  ResolvedNamedRange,
-} from './compiler/render-plan';
+} from './render-plan';
 
 export { renderWorkbook } from './renderer';
 

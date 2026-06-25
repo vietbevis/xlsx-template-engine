@@ -58,45 +58,6 @@ export function validateWorkbookDefinition(workbook: WorkbookDefinition): void {
     sheetIds.add(sheet.id);
     sheetNames.add(normalizedSheetName);
   }
-
-  validateNamedRanges(workbook.namedRanges, sheetIds);
-}
-
-function validateNamedRanges(value: unknown, sheetIds: ReadonlySet<string>): void {
-  if (value === undefined) {
-    return;
-  }
-
-  if (!Array.isArray(value)) {
-    throw new ReportEngineError('Workbook namedRanges must be an array.');
-  }
-
-  const names = new Set<string>();
-
-  for (const [index, range] of value.entries()) {
-    const label = `Workbook namedRanges ${index}`;
-
-    if (!isPlainObject(range)) {
-      throw new ReportEngineError(`${label} must be an object.`);
-    }
-
-    validateNamedRangeName(range.name, `${label} name`);
-    validateRequiredKey(range.sheetId, `${label} sheetId`);
-    validateRequiredKey(range.startId, `${label} startId`);
-    validateRequiredKey(range.endId, `${label} endId`);
-
-    if (typeof range.sheetId === 'string' && !sheetIds.has(range.sheetId)) {
-      throw new ReportEngineError(`${label} references unknown sheetId "${range.sheetId}".`);
-    }
-
-    if (typeof range.name === 'string') {
-      if (names.has(range.name)) {
-        throw new ReportEngineError(`Duplicate named range "${range.name}".`);
-      }
-
-      names.add(range.name);
-    }
-  }
 }
 
 function validateFreezePane(value: unknown, label: string): void {
@@ -154,21 +115,14 @@ function validateBlock(
       validatePositiveInteger(block.rows, `${path} rows`);
       validateStyleReference(block.style, styles, path);
       return;
-    case 'repeat':
-      if (!Array.isArray(block.data)) {
-        throw new ReportEngineError(`${path} data must be an array.`);
-      }
-
-      if (typeof block.block !== 'function') {
-        throw new ReportEngineError(`${path} block must be a function.`);
-      }
-
-      return;
     case 'grid':
       validateGridBlock(block, sheetId, blockIndex, styles);
       return;
     case 'table':
       validateTableBlock(block, sheetId, blockIndex, styles);
+      return;
+    case 'table-groups':
+      validateTableGroupsBlock(block, sheetId, blockIndex, styles);
       return;
     default:
       throw new ReportEngineError(`Unknown block type "${blockType}" in sheet "${sheetId}".`);
@@ -183,12 +137,52 @@ function validateTableBlock(
 ): void {
   const label = createBlockPath(sheetId, block, blockIndex);
 
-  if (!Array.isArray(block.columns) || block.columns.length === 0) {
-    throw new ReportEngineError(`${label} columns must be a non-empty array.`);
+  validateBaseTableBlock(block, sheetId, blockIndex, styles);
+
+  if (!Array.isArray(block.data)) {
+    throw new ReportEngineError(`${label} data must be an array.`);
   }
 
-  if (!Array.isArray(block.data) && !isAsyncIterable(block.data)) {
-    throw new ReportEngineError(`${label} data must be an array or async iterable.`);
+  if (block.groups !== undefined) {
+    throw new ReportEngineError(`${label} must not include groups. Use type "table-groups" for grouped tables.`);
+  }
+
+  validateTableDataRows(block.data, `${label} data`);
+}
+
+function validateTableGroupsBlock(
+  block: Record<string, unknown>,
+  sheetId: string,
+  blockIndex: number,
+  styles: WorkbookDefinition['styles'],
+): void {
+  const label = createBlockPath(sheetId, block, blockIndex);
+
+  validateBaseTableBlock(block, sheetId, blockIndex, styles);
+
+  if (block.data !== undefined) {
+    throw new ReportEngineError(`${label} must not include data. Put data inside groups[].data.`);
+  }
+
+  if (!Array.isArray(block.groups) || block.groups.length === 0) {
+    throw new ReportEngineError(`${label} groups must be a non-empty array.`);
+  }
+
+  for (const [groupIndex, group] of block.groups.entries()) {
+    validateTableGroup(group, `${label} groups ${groupIndex}`, styles);
+  }
+}
+
+function validateBaseTableBlock(
+  block: Record<string, unknown>,
+  sheetId: string,
+  blockIndex: number,
+  styles: WorkbookDefinition['styles'],
+): void {
+  const label = createBlockPath(sheetId, block, blockIndex);
+
+  if (!Array.isArray(block.columns) || block.columns.length === 0) {
+    throw new ReportEngineError(`${label} columns must be a non-empty array.`);
   }
 
   if (block.headerRowHeights !== undefined) {
@@ -219,21 +213,13 @@ function validateTableBlock(
   }
 
   if (block.titleRows !== undefined) {
-    if (!Array.isArray(block.titleRows)) {
-      throw new ReportEngineError(`${label} titleRows must be an array.`);
-    }
-
-    for (const [rowIndex, row] of block.titleRows.entries()) {
-      validateTableTitleRow(row, `${label} titleRows ${rowIndex}`, styles);
-    }
+    throw new ReportEngineError(
+      `${label} must not include titleRows. Use separate title/text blocks before the table.`,
+    );
   }
 
-  if (Array.isArray(block.data)) {
-    for (const [itemIndex, item] of block.data.entries()) {
-      if (isTableSectionRow(item)) {
-        validateTableSectionRow(item, `${label} data ${itemIndex}`, styles);
-      }
-    }
+  if (block.preHeaderGrid !== undefined) {
+    throw new ReportEngineError(`${label} must not include preHeaderGrid. Use a separate grid block before the table.`);
   }
 
   if (block.footerRows !== undefined) {
@@ -248,6 +234,46 @@ function validateTableBlock(
 
   for (const [columnIndex, column] of block.columns.entries()) {
     validateTableColumn(column, sheetId, blockIndex, [columnIndex], styles);
+  }
+}
+
+function validateTableGroup(group: unknown, label: string, styles: WorkbookDefinition['styles']): void {
+  if (!isPlainObject(group)) {
+    throw new ReportEngineError(`${label} must be an object.`);
+  }
+
+  if (group.headerRows !== undefined) {
+    if (!Array.isArray(group.headerRows)) {
+      throw new ReportEngineError(`${label} headerRows must be an array.`);
+    }
+
+    for (const [rowIndex, row] of group.headerRows.entries()) {
+      validateTableSectionRow(row, `${label} headerRows ${rowIndex}`, styles);
+    }
+  }
+
+  if (!Array.isArray(group.data)) {
+    throw new ReportEngineError(`${label} data must be an array.`);
+  }
+
+  validateTableDataRows(group.data, `${label} data`);
+
+  if (group.footerRows !== undefined) {
+    if (!Array.isArray(group.footerRows)) {
+      throw new ReportEngineError(`${label} footerRows must be an array.`);
+    }
+
+    for (const [rowIndex, row] of group.footerRows.entries()) {
+      validateTableSectionRow(row, `${label} footerRows ${rowIndex}`, styles);
+    }
+  }
+}
+
+function validateTableDataRows(rows: readonly unknown[], label: string): void {
+  for (const [itemIndex, item] of rows.entries()) {
+    if (isLegacyTableSectionRow(item)) {
+      throw new ReportEngineError(`${label} ${itemIndex} is a section row. Move it to headerRows or footerRows.`);
+    }
   }
 }
 
@@ -266,16 +292,6 @@ function validateTableFooterRow(row: unknown, label: string, styles: WorkbookDef
   for (const [cellIndex, cell] of row.cells.entries()) {
     validateTableSectionCell(cell, `${label} cell ${cellIndex}`, styles);
   }
-}
-
-function validateTableTitleRow(row: unknown, label: string, styles: WorkbookDefinition['styles']): void {
-  if (!isPlainObject(row)) {
-    throw new ReportEngineError(`${label} must be an object.`);
-  }
-
-  validateCellContent(row.value, `${label} value`);
-  validatePositiveNumber(row.height, `${label} height`);
-  validateStyleReference(row.style, styles, label);
 }
 
 function validateTableSectionRow(row: unknown, label: string, styles: WorkbookDefinition['styles']): void {
@@ -303,7 +319,7 @@ function validateTableSectionRow(row: unknown, label: string, styles: WorkbookDe
   }
 }
 
-function isTableSectionRow(value: unknown): value is Record<string, unknown> {
+function isLegacyTableSectionRow(value: unknown): value is Record<string, unknown> {
   return isPlainObject(value) && value.type === 'section';
 }
 
@@ -471,7 +487,7 @@ function validateGridCell(
     validateCellContent(cell.value, `${label} value`);
   }
 
-  validatePositiveInteger(cell.colSpan, `${label} colSpan`);
+  validateColSpan(cell.colSpan, `${label} colSpan`);
   validatePositiveInteger(cell.rowSpan, `${label} rowSpan`);
   validatePositiveNumber(cell.width, `${label} width`);
   validateStyleReference(cell.style, styles, label);
@@ -537,7 +553,16 @@ function validateTextBlock(block: Record<string, unknown>, label: string, styles
   }
 
   validatePositiveNumber(block.height, `${label} height`);
+  validateColSpan(block.colSpan, `${label} colSpan`);
   validateStyleReference(block.style, styles, label);
+}
+
+function validateColSpan(value: unknown, label: string): void {
+  if (value === 'remaining') {
+    return;
+  }
+
+  validatePositiveInteger(value, label);
 }
 
 function validatePositiveInteger(value: unknown, label: string): void {
@@ -672,16 +697,6 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
       validateNestedFormulaDefinition(value.value, `${label} iferror formula value`);
       validateNestedFormulaDefinition(value.fallback, `${label} iferror formula fallback`);
       return;
-    case 'vlookup':
-      validateNestedFormulaDefinition(value.lookup, `${label} vlookup formula lookup`);
-      validateNamedRangeName(value.rangeName, `${label} vlookup formula rangeName`);
-      validatePositiveInteger(value.colIndex, `${label} vlookup formula colIndex`);
-
-      if (value.exactMatch !== undefined && typeof value.exactMatch !== 'boolean') {
-        throw new ReportEngineError(`${label} vlookup formula exactMatch must be a boolean.`);
-      }
-
-      return;
     case 'binary':
       if (
         typeof value.operator !== 'string' ||
@@ -700,9 +715,6 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
       validateOptionalKey(value.sheetId, `${label} ref formula sheetId`);
       rejectDeprecatedKeyFields(value, `${label} ref formula`, ['key']);
       validateRequiredKey(value.id, `${label} ref formula id`);
-      return;
-    case 'namedRange':
-      validateNamedRangeName(value.name, `${label} namedRange formula name`);
       return;
     default:
       throw new ReportEngineError(`${label} formula type is not supported.`);
@@ -760,22 +772,6 @@ function validateRequiredKey(value: unknown, label: string): void {
   }
 }
 
-function validateNamedRangeName(value: unknown, label: string): void {
-  validateRequiredKey(value, label);
-
-  if (typeof value !== 'string') {
-    return;
-  }
-
-  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(value)) {
-    throw new ReportEngineError(`${label} must start with a letter or _ and contain only letters, numbers, or _.`);
-  }
-
-  if (/^[A-Za-z]{1,3}[1-9][0-9]*$/.test(value)) {
-    throw new ReportEngineError(`${label} must not look like an Excel cell address.`);
-  }
-}
-
 function rejectDeprecatedKeyFields(value: Record<string, unknown>, label: string, fields: readonly string[]): void {
   for (const field of fields) {
     if (Object.prototype.hasOwnProperty.call(value, field)) {
@@ -827,8 +823,4 @@ function validateSheetName(sheetName: string, sheetId: string): void {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
-}
-
-function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
-  return typeof value === 'object' && value !== null && Symbol.asyncIterator in value;
 }

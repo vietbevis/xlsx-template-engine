@@ -1,26 +1,10 @@
-import type {
-  CellStyleDefinition,
-  CellValue,
-  StyleValue,
-  StyleRegistry,
-  WorkbookMetadata,
-} from '../core/types';
+import type { CellStyleDefinition, CellValue, StyleRegistry, StyleValue, WorkbookMetadata } from './types';
 
 export interface RenderPlan {
   metadata?: WorkbookMetadata;
   defaultStyle?: CellStyleDefinition;
   styles?: StyleRegistry;
-  namedRanges?: ResolvedNamedRange[];
   sheets: RenderPlanSheet[];
-}
-
-export interface ResolvedNamedRange {
-  name: string;
-  sheetName: string;
-  startRow: number;
-  startColumn: number;
-  endRow: number;
-  endColumn: number;
 }
 
 export interface RenderPlanSheet {

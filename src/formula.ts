@@ -1,11 +1,11 @@
-import { isFormulaDefinition } from './compiler/formula-engine';
+import { isFormulaDefinition } from './formula-engine';
 import type {
   BinaryFormulaDefinition,
   FormulaBinaryOperator,
   FormulaDefinition,
   FormulaRangeScope,
   LiteralFormulaDefinition,
-} from './core/types';
+} from './types';
 
 type CoercibleValue = FormulaDefinition | string | number | boolean | null;
 
@@ -16,15 +16,8 @@ export const f = {
   xref(sheetId: string, id: string) {
     return { type: 'ref', sheetId, id } as const;
   },
-  range(
-    startId: string,
-    endId: string,
-    options: { sheetId?: string; scope?: FormulaRangeScope } = {},
-  ) {
+  range(startId: string, endId: string, options: { sheetId?: string; scope?: FormulaRangeScope } = {}) {
     return { type: 'range', startId, endId, ...options } as const;
-  },
-  namedRange(name: string) {
-    return { type: 'namedRange', name } as const;
   },
   val(value: string | number | boolean | null): LiteralFormulaDefinition {
     return { type: 'literal', value };
@@ -32,11 +25,7 @@ export const f = {
   raw(expression: string) {
     return { type: 'raw', expression } as const;
   },
-  sumRange(
-    startId: string,
-    endId: string,
-    options: { sheetId?: string; scope?: FormulaRangeScope } = {},
-  ) {
+  sumRange(startId: string, endId: string, options: { sheetId?: string; scope?: FormulaRangeScope } = {}) {
     return { type: 'sum', range: { startId, endId, ...options } } as const;
   },
   sum(...values: FormulaDefinition[]) {
@@ -103,14 +92,6 @@ export const f = {
   },
   iferror(value: FormulaDefinition, fallback: CoercibleValue) {
     return { type: 'iferror', value, fallback: coerce(fallback) } as const;
-  },
-  vlookup(
-    lookup: FormulaDefinition,
-    rangeName: string,
-    colIndex: number,
-    exactMatch: boolean = true,
-  ) {
-    return { type: 'vlookup', lookup, rangeName, colIndex, exactMatch } as const;
   },
   call(name: string, ...args: FormulaDefinition[]) {
     return { type: 'call', name, args } as const;

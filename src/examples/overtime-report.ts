@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
-import { defineWorkbook } from '../core/workbook';
 import { renderWorkbook } from '../renderer';
+import type { WorkbookDefinition } from '../types';
 
 const danhSachDoiTuong = [
   { title: 'VN', id: 'vn' },
@@ -80,7 +80,7 @@ const columns = [
   { title: 'Ký nhận', id: 'kyNhan' },
 ] as const;
 
-const workbook = defineWorkbook({
+const workbook = {
   defaultStyle: {
     font: { name: 'Times New Roman' },
   },
@@ -110,16 +110,20 @@ const workbook = defineWorkbook({
       id: 'summary',
       name: 'Tổng hợp',
       blocks: [
+        { type: 'title', text: '{{sheetTitle}}', style: 'title', height: 28, colSpan: 'remaining' },
+        {
+          type: 'title',
+          text: 'TỔNG HỢP TẤT CẢ CÁC KHOA',
+          style: 'title',
+          height: 24,
+          colSpan: 'remaining',
+        },
+        { type: 'text', text: '', height: 24, colSpan: 'remaining' },
         {
           type: 'table',
           border: 'thin',
           headerStyle: 'header',
           headerRowHeights: [28, 28, 28],
-          titleRows: [
-            { value: '{{sheetTitle}}', style: 'title', height: 28 },
-            { value: 'TỔNG HỢP TẤT CẢ CÁC KHOA', style: 'title', height: 24 },
-            { value: '', height: 24 },
-          ],
           columns,
           data: [],
         },
@@ -129,73 +133,98 @@ const workbook = defineWorkbook({
       id: 'cntt',
       name: 'Khoa CNTT',
       blocks: [
+        { type: 'title', text: '{{sheetTitle}}', style: 'title', height: 28, colSpan: 'remaining' },
         {
-          type: 'table',
-          border: 'thin',
-          headerStyle: 'header',
-          headerRowHeights: [28, 28, 28],
-          titleRows: [
-            { value: '{{sheetTitle}}', style: 'title', height: 28 },
-            { value: 'KHOA CÔNG NGHỆ THÔNG TIN', style: 'title', height: 24 },
-            { value: '', height: 24 },
-          ],
-          columns,
-          data: [
+          type: 'title',
+          text: 'KHOA CÔNG NGHỆ THÔNG TIN',
+          style: 'title',
+          height: 24,
+          colSpan: 'remaining',
+        },
+        { type: 'text', text: '', height: 24, colSpan: 'remaining' },
+        {
+          type: 'grid',
+          rows: [
             {
-              type: 'section',
+              height: 20,
               cells: [
                 {
-                  value: 'I',
-                  style: { font: { bold: true }, alignment: { horizontal: 'center' } },
-                },
-                {
-                  value: 'Khoa Công nghệ thông tin',
-                  style: { font: { bold: true } },
+                  value: 'Đơn vị tính: tiết / đồng',
                   colSpan: 'remaining',
+                  style: { font: { italic: true }, alignment: { horizontal: 'right' } },
                 },
               ],
             },
+          ],
+        },
+        {
+          type: 'table-groups',
+          border: 'thin',
+          headerStyle: 'header',
+          headerRowHeights: [28, 28, 28],
+          columns,
+          groups: [
             {
-              stt: 1,
-              giangVien: 'Nguyễn Văn A',
-              thuNhap: 15000000,
-              dinhMucGioGiang: 200,
-              duocGiam: 20,
-              soTietChuaHoanThanhNCKH: 10,
-              dinhMucPhaiGiang: 170,
-              hocKyI_vn: 80,
-              hocKyI_lao: 10,
-              hocKyI_cuba: 5,
-              hocKyI_cpc: 0,
-              hocKyI_dong_hp: 0,
-              hocKyII_vn: 70,
-              hocKyII_lao: 5,
-              hocKyII_cuba: 5,
-              hocKyII_cpc: 0,
-              hocKyII_dong_hp: 0,
-              caNam_vn: 150,
-              caNam_lao: 15,
-              caNam_cuba: 10,
-              caNam_cpc: 0,
-              caNam_dong_hp: 0,
-              soTietVuotDinhMuc: 30,
-              mucTTChuan: 100000,
-              vn: 8000000,
-              lao: 1500000,
-              cuba: 1000000,
-              cpc: 0,
-              dong_hp: 0,
-              tong: 10500000,
-              thucNhan: {
-                type: 'binary',
-                operator: '-',
-                left: { type: 'ref', id: 'tong' },
-                right: { type: 'ref', id: 'mucTTChuan' },
-              },
-              kyNhan: '',
+              headerRows: [
+                {
+                  cells: [
+                    {
+                      value: 'I',
+                      style: { font: { bold: true }, alignment: { horizontal: 'center' } },
+                    },
+                    {
+                      value: 'Khoa Công nghệ thông tin',
+                      style: { font: { bold: true } },
+                      colSpan: 'remaining',
+                    },
+                  ],
+                },
+              ],
+              data: [
+                {
+                  stt: 1,
+                  giangVien: 'Nguyễn Văn A',
+                  thuNhap: 15000000,
+                  dinhMucGioGiang: 200,
+                  duocGiam: 20,
+                  soTietChuaHoanThanhNCKH: 10,
+                  dinhMucPhaiGiang: 170,
+                  hocKyI_vn: 80,
+                  hocKyI_lao: 10,
+                  hocKyI_cuba: 5,
+                  hocKyI_cpc: 0,
+                  hocKyI_dong_hp: 0,
+                  hocKyII_vn: 70,
+                  hocKyII_lao: 5,
+                  hocKyII_cuba: 5,
+                  hocKyII_cpc: 0,
+                  hocKyII_dong_hp: 0,
+                  caNam_vn: 150,
+                  caNam_lao: 15,
+                  caNam_cuba: 10,
+                  caNam_cpc: 0,
+                  caNam_dong_hp: 0,
+                  soTietVuotDinhMuc: 30,
+                  mucTTChuan: 100000,
+                  vn: 8000000,
+                  lao: 1500000,
+                  cuba: 1000000,
+                  cpc: 0,
+                  dong_hp: 0,
+                  tong: 10500000,
+                  thucNhan: {
+                    type: 'binary',
+                    operator: '-',
+                    left: { type: 'ref', id: 'tong' },
+                    right: { type: 'ref', id: 'mucTTChuan' },
+                  },
+                  kyNhan: '',
+                },
+              ],
             },
+          ],
+          footerRows: [
             {
-              type: 'section',
               style: { font: { bold: true }, alignment: { horizontal: 'right' } },
               cells: [
                 {
@@ -237,23 +266,21 @@ const workbook = defineWorkbook({
       id: 'matma',
       name: 'Khoa Mật mã',
       blocks: [
+        { type: 'title', text: '{{sheetTitle}}', style: 'title', height: 28, colSpan: 'remaining' },
+        { type: 'title', text: 'KHOA MẬT MÃ', style: 'title', height: 24, colSpan: 'remaining' },
+        { type: 'text', text: '', height: 24, colSpan: 'remaining' },
         {
           type: 'table',
           border: 'thin',
           headerStyle: 'header',
           headerRowHeights: [28, 28, 28],
-          titleRows: [
-            { value: '{{sheetTitle}}', style: 'title', height: 28 },
-            { value: 'KHOA MẬT MÃ', style: 'title', height: 24 },
-            { value: '', height: 24 },
-          ],
           columns,
           data: [],
         },
       ],
     },
   ],
-});
+} as const satisfies WorkbookDefinition;
 
 export async function exportExcel(): Promise<void> {
   const outputPath = 'output/overtime-report-generated.xlsx';

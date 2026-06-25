@@ -1,5 +1,4 @@
-import type ExcelJS from 'exceljs';
-import { ReportEngineError } from '../core/errors';
+import { ReportEngineError } from './errors';
 import type {
   Block,
   CellContent,
@@ -9,14 +8,12 @@ import type {
   SheetDefinition,
   StyleRegistry,
   StyleValue,
-  TableBorderDefinition,
   TableFooterRow,
-  TableSectionCell,
-  TableSectionCellContext,
+  TableGroup,
+  TableLeafColumn,
   TableSectionRow,
-  TableTitleRow,
   WorkbookDefinition,
-} from '../core/types';
+} from './types';
 import {
   type CellAddress,
   compileCellContent,
@@ -29,6 +26,22 @@ import {
 } from './formula-engine';
 import type { LayoutCursor } from './layout-cursor';
 import type { RenderPlanBuilder } from './render-plan-builder';
+import {
+  assertGridCellDoesNotOverlap,
+  buildHeaderMatrix,
+  calculateTableHeaderDepth,
+  collectTableDataRows,
+  createSummaryFormula,
+  createTableColumnIdMap,
+  createTableInlineStyle,
+  flattenColumns,
+  gridOccupancyKey,
+  markGridOccupied,
+  resolveColSpan,
+  resolveSectionCellColumnOffset,
+  resolveSectionCellColSpan,
+  resolveSectionCellValue,
+} from './helpers/utils';
 import { interpolateCellValue, interpolateVariables, type VariableScope } from './variable-engine';
 
 export interface SheetContext {
@@ -37,98 +50,91 @@ export interface SheetContext {
   styles?: StyleRegistry;
   variables: VariableScope;
   formulaIds?: Map<string, CellAddress>;
-  namedRangeNames?: ReadonlySet<string>;
+  sheetColumnCount: number;
 }
 
-export type BlockCompiler<TBlock extends Block = Block> = (
-  block: TBlock,
+function compileTextLikeBlock(
+  block: Extract<Block, { type: 'title' | 'text' }>,
   context: SheetContext,
   cursor: LayoutCursor,
   builder: RenderPlanBuilder,
-) => void;
+): void {
+  const variables = createBlockVariableScope(context, block);
+  const colSpan = resolveColSpan(block.colSpan, 0, context.sheetColumnCount);
 
-export type BlockCompilerRegistry = {
-  [TType in Block['type']]: BlockCompiler<Extract<Block, { type: TType }>>;
-};
+  builder.addCell(context.sheet.id, {
+    row: cursor.row,
+    column: cursor.column,
+    value: interpolateVariables(block.text, variables),
+    style: block.style,
+  });
 
-const defaultBlockCompilerRegistry: BlockCompilerRegistry = {
-  title(block, context, cursor, builder) {
-    const variables = createBlockVariableScope(context, block);
-
-    builder.addCell(context.sheet.id, {
-      row: cursor.row,
-      column: cursor.column,
-      value: interpolateVariables(block.text, variables),
-      style: block.style,
+  if (colSpan > 1) {
+    builder.addMerge(context.sheet.id, {
+      startRow: cursor.row,
+      startColumn: cursor.column,
+      endRow: cursor.row,
+      endColumn: cursor.column + colSpan - 1,
     });
+  }
 
-    if (block.height !== undefined) {
-      builder.setRowHeight(context.sheet.id, {
-        row: cursor.row,
-        height: block.height,
-      });
-    }
-
-    cursor.advanceRows();
-  },
-  text(block, context, cursor, builder) {
-    const variables = createBlockVariableScope(context, block);
-
-    builder.addCell(context.sheet.id, {
+  if (block.height !== undefined) {
+    builder.setRowHeight(context.sheet.id, {
       row: cursor.row,
-      column: cursor.column,
-      value: interpolateVariables(block.text, variables),
-      style: block.style,
+      height: block.height,
     });
+  }
 
-    if (block.height !== undefined) {
-      builder.setRowHeight(context.sheet.id, {
-        row: cursor.row,
-        height: block.height,
-      });
-    }
-
-    cursor.advanceRows();
-  },
-  spacer(block, _context, cursor) {
-    cursor.advanceRows(block.rows ?? 1);
-  },
-  divider(block, context, cursor, builder) {
-    const rows = block.rows ?? 1;
-
-    for (let rowOffset = 0; rowOffset < rows; rowOffset += 1) {
-      builder.addCell(context.sheet.id, {
-        row: cursor.row + rowOffset,
-        column: cursor.column,
-        value: '',
-        style: block.style,
-      });
-    }
-
-    cursor.advanceRows(rows);
-  },
-  grid(block, context, cursor, builder) {
-    compileGridBlock(block, context, cursor, builder);
-  },
-  table(block, context, cursor, builder) {
-    compileTableBlock(block, context, cursor, builder);
-  },
-};
+  cursor.advanceRows();
+}
 
 export function compileBlock(
   block: Block,
   context: SheetContext,
   cursor: LayoutCursor,
   builder: RenderPlanBuilder,
-  registry: BlockCompilerRegistry = defaultBlockCompilerRegistry,
 ): void {
-  const compiler = registry[block.type] as BlockCompiler | undefined;
+  switch (block.type) {
+    case 'title':
+    case 'text':
+      compileTextLikeBlock(block, context, cursor, builder);
+      return;
+    case 'spacer':
+      cursor.advanceRows(block.rows ?? 1);
+      return;
+    case 'divider':
+      compileDividerBlock(block, context, cursor, builder);
+      return;
+    case 'grid':
+      compileGridBlock(block, context, cursor, builder);
+      return;
+    case 'table':
+    case 'table-groups':
+      compileTableBlock(block, context, cursor, builder);
+      return;
+    default:
+      throw new ReportEngineError(`Unknown block type "${(block as Block).type}" in sheet "${context.sheet.id}".`);
+  }
+}
 
-  if (!compiler) {
-    throw new ReportEngineError(`Unknown block type "${block.type}" in sheet "${context.sheet.id}".`);
+function compileDividerBlock(
+  block: Extract<Block, { type: 'divider' }>,
+  context: SheetContext,
+  cursor: LayoutCursor,
+  builder: RenderPlanBuilder,
+): void {
+  const rows = block.rows ?? 1;
+
+  for (let rowOffset = 0; rowOffset < rows; rowOffset += 1) {
+    builder.addCell(context.sheet.id, {
+      row: cursor.row + rowOffset,
+      column: cursor.column,
+      value: '',
+      style: block.style,
+    });
   }
 
-  compiler(block, context, cursor, builder);
+  cursor.advanceRows(rows);
 }
 
 function compileGridBlock(
@@ -155,11 +161,11 @@ function compileGridBlock(
     let columnOffset = 0;
 
     for (const cell of gridRow.cells) {
-      while (occupied.has(occupancyKey(rowOffset, columnOffset))) {
+      while (occupied.has(gridOccupancyKey(rowOffset, columnOffset))) {
         columnOffset += 1;
       }
 
-      const colSpan = cell.colSpan ?? 1;
+      const colSpan = resolveColSpan(cell.colSpan, columnOffset, context.sheetColumnCount);
       const rowSpan = cell.rowSpan ?? 1;
       assertGridCellDoesNotOverlap(occupied, rowOffset, columnOffset, rowSpan, colSpan);
 
@@ -174,7 +180,7 @@ function compileGridBlock(
         column: absoluteColumn,
       });
 
-      markGridCellOccupied(occupied, rowOffset, columnOffset, rowSpan, colSpan);
+      markGridOccupied(occupied, rowOffset, columnOffset, rowSpan, colSpan);
       rowExtent = Math.max(rowExtent, rowOffset + rowSpan);
       columnOffset += colSpan;
     }
@@ -182,7 +188,9 @@ function compileGridBlock(
 
   const formulaContext = createFormulaCompileContext(
     context.formulaIds ?? createGridCellIdMap(placements, context.sheet),
-    { currentSheetId: context.sheet.id, namedRanges: context.namedRangeNames },
+    {
+      currentSheetId: context.sheet.id,
+    },
   );
 
   for (const placement of placements) {
@@ -239,7 +247,13 @@ function createGridCellIdMap(placements: GridCellPlacement[], sheet: SheetDefini
       continue;
     }
 
-    registerCellId(idMap, createFormulaId(sheet.id, placement.cell.id), {
+    const registryKey = createFormulaId(sheet.id, placement.cell.id);
+
+    if (idMap.has(registryKey)) {
+      throw new ReportEngineError(`Duplicate formula cell id "${registryKey}".`);
+    }
+
+    idMap.set(registryKey, {
       row: placement.row,
       column: placement.column,
       sheetId: sheet.id,
@@ -250,63 +264,21 @@ function createGridCellIdMap(placements: GridCellPlacement[], sheet: SheetDefini
   return idMap;
 }
 
-function assertGridCellDoesNotOverlap(
-  occupied: Set<string>,
-  rowOffset: number,
-  columnOffset: number,
-  rowSpan: number,
-  colSpan: number,
-): void {
-  for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
-    for (let column = columnOffset; column < columnOffset + colSpan; column += 1) {
-      if (occupied.has(occupancyKey(row, column))) {
-        throw new ReportEngineError('Grid cell merge ranges must not overlap.');
-      }
-    }
-  }
-}
-
-function markGridCellOccupied(
-  occupied: Set<string>,
-  rowOffset: number,
-  columnOffset: number,
-  rowSpan: number,
-  colSpan: number,
-): void {
-  for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
-    for (let column = columnOffset; column < columnOffset + colSpan; column += 1) {
-      occupied.add(occupancyKey(row, column));
-    }
-  }
-}
-
-function occupancyKey(rowOffset: number, columnOffset: number): string {
-  return `${rowOffset}:${columnOffset}`;
-}
-
 function compileTableBlock(
-  block: Extract<Block, { type: 'table' }>,
+  block: Extract<Block, { type: 'table' | 'table-groups' }>,
   context: SheetContext,
   cursor: LayoutCursor,
   builder: RenderPlanBuilder,
 ): void {
-  if (block.data !== undefined && !Array.isArray(block.data)) {
-    throw new ReportEngineError('AsyncIterable table data is not yet supported. Use an array data source.');
-  }
-
   const variables = createBlockVariableScope(context, block);
-  const headerDepth = calculateHeaderDepth(block.columns);
+  const headerDepth = calculateTableHeaderDepth(block.columns);
   const headerCells = buildHeaderMatrix(block.columns, headerDepth);
-  const leafColumns = flattenLeafColumns(block.columns);
+  const leafColumns = flattenColumns(block.columns);
   const tableColumnIdMap = createTableColumnIdMap(leafColumns);
   const tableWidth = leafColumns.length;
   const allRows = collectTableDataRows(block);
   const tableInlineStyle = createTableInlineStyle(block.border);
   const footerRows = resolveTableFooterRows(block, leafColumns);
-
-  for (const titleRow of block.titleRows ?? []) {
-    compileTableTitleRow(titleRow, context, cursor, builder, tableWidth, variables);
-  }
 
   for (const [rowOffset, height] of (block.headerRowHeights ?? []).entries()) {
     builder.setRowHeight(context.sheet.id, {
@@ -352,172 +324,96 @@ function compileTableBlock(
 
   cursor.advanceRows(headerDepth);
 
-  if (!Array.isArray(block.data)) {
-    return;
+  const allRenderedRows: RenderedTableDataRow[] = [];
+
+  if (block.type === 'table') {
+    compileTableDataRowsWithTracking(block.data as readonly Record<string, unknown>[], 0, {
+      allRenderedRows,
+      block,
+      builder,
+      context,
+      cursor,
+      leafColumns,
+      tableColumnIdMap,
+      tableInlineStyle,
+      variables,
+    });
+  } else {
+    let dataIndex = 0;
+
+    for (const group of block.groups as readonly TableGroup[]) {
+      const groupRenderedRows: RenderedTableDataRow[] = [];
+
+      for (const sectionRow of group.headerRows ?? []) {
+        compileTableSectionRow(sectionRow, {
+          allRows,
+          allRenderedRows,
+          builder,
+          context,
+          currentRenderedRows: groupRenderedRows,
+          cursor,
+          dataIndex,
+          tableColumnIdMap,
+          tableWidth,
+          tableInlineStyle,
+          variables,
+        });
+      }
+
+      compileTableDataRowsWithTracking(group.data, dataIndex, {
+        allRenderedRows,
+        block,
+        builder,
+        context,
+        cursor,
+        leafColumns,
+        tableColumnIdMap,
+        tableInlineStyle,
+        trackedRows: groupRenderedRows,
+        variables,
+      });
+
+      for (const sectionRow of group.footerRows ?? []) {
+        compileTableSectionRow(sectionRow, {
+          allRows,
+          allRenderedRows,
+          builder,
+          context,
+          currentRenderedRows: groupRenderedRows,
+          cursor,
+          dataIndex: dataIndex + group.data.length,
+          tableColumnIdMap,
+          tableWidth,
+          tableInlineStyle,
+          variables,
+        });
+      }
+
+      dataIndex += group.data.length;
+    }
   }
 
-  const allRenderedRows: RenderedTableDataRow[] = [];
-  let currentRenderedRows: RenderedTableDataRow[] = [];
-
-  for (const [dataIndex, item] of block.data.entries()) {
-    if (isTableSectionRow(item)) {
-      compileTableSectionRow(item, {
+  for (const footerRow of footerRows) {
+    compileTableSectionRow(
+      {
+        style: footerRow.style,
+        height: footerRow.height,
+        cells: footerRow.cells,
+      },
+      {
         allRows,
         allRenderedRows,
         builder,
         context,
-        currentRenderedRows,
+        currentRenderedRows: allRenderedRows,
         cursor,
-        dataIndex,
+        dataIndex: allRows.length,
         tableColumnIdMap,
         tableWidth,
         tableInlineStyle,
         variables,
-      });
-
-      if (item.resetRows) {
-        currentRenderedRows = [];
-      }
-
-      continue;
-    }
-
-    const rowIndex = cursor.row;
-    compileTableDataRow(
-      item as Record<string, unknown>,
-      dataIndex,
-      context,
-      cursor,
-      builder,
-      leafColumns,
-      tableColumnIdMap,
-      variables,
-      block.bodyStyle,
-      dataIndex % 2 === 0 ? block.oddRowStyle : block.evenRowStyle,
-      tableInlineStyle,
-      block.bodyRowHeight,
-      block.rowHidden?.(item as Record<string, unknown>, dataIndex),
+      },
     );
-    const renderedRow = {
-      data: item as Record<string, unknown>,
-      row: rowIndex,
-    };
-    currentRenderedRows.push(renderedRow);
-    allRenderedRows.push(renderedRow);
-  }
-
-  for (const footerRow of footerRows) {
-    compileTableFooterRow(footerRow, {
-      allRows,
-      allRenderedRows,
-      builder,
-      context,
-      currentRenderedRows: allRenderedRows,
-      cursor,
-      dataIndex: block.data.length,
-      tableColumnIdMap,
-      tableWidth,
-      tableInlineStyle,
-      variables,
-    });
-  }
-}
-
-function compileTableTitleRow(
-  titleRow: TableTitleRow,
-  context: SheetContext,
-  cursor: LayoutCursor,
-  builder: RenderPlanBuilder,
-  tableWidth: number,
-  variables: VariableScope,
-): void {
-  builder.addCell(context.sheet.id, {
-    row: cursor.row,
-    column: cursor.column,
-    ...compileCellContent(
-      interpolateCellValue(titleRow.value, variables),
-      createFormulaCompileContext(context.formulaIds ?? new Map(), {
-        currentSheetId: context.sheet.id,
-        namedRanges: context.namedRangeNames,
-      }),
-    ),
-    style: titleRow.style,
-  });
-
-  if (tableWidth > 1) {
-    builder.addMerge(context.sheet.id, {
-      startRow: cursor.row,
-      startColumn: cursor.column,
-      endRow: cursor.row,
-      endColumn: cursor.column + tableWidth - 1,
-    });
-  }
-
-  if (titleRow.height !== undefined) {
-    builder.setRowHeight(context.sheet.id, {
-      row: cursor.row,
-      height: titleRow.height,
-    });
-  }
-
-  cursor.advanceRows();
-}
-
-function compileTableDataRows(
-  rows: Record<string, unknown>[],
-  firstDataIndex: number,
-  context: SheetContext,
-  cursor: LayoutCursor,
-  builder: RenderPlanBuilder,
-  leafColumns: TableLeafColumn[],
-  tableColumnIdMap: Map<string, number>,
-  variables: VariableScope,
-  bodyStyle?: StyleValue,
-  bandStyle?: StyleValue,
-  inlineStyle?: CellStyleDefinition,
-  bodyRowHeight?: number,
-  hidden?: boolean,
-): void {
-  for (const [rowOffset, rowData] of rows.entries()) {
-    const absoluteRow = cursor.row;
-    const dataIndex = firstDataIndex + rowOffset;
-    const formulaContext = createTableRowFormulaContext(tableColumnIdMap, absoluteRow, cursor.column, context);
-
-    for (const [columnOffset, column] of leafColumns.entries()) {
-      const value = resolveTableCellValue(rowData, column);
-      assertTableCellValue(value);
-      const compiledContent = compileCellContent(interpolateCellValue(value, variables), formulaContext);
-      const staticStyle = column.bodyStyle ?? column.style ?? bandStyle ?? bodyStyle;
-
-      builder.addCell(context.sheet.id, {
-        row: absoluteRow,
-        column: cursor.column + columnOffset,
-        ...compiledContent,
-        style: resolveCellStyle(
-          staticStyle,
-          column.styleResolver?.(compiledContent.value, rowData, dataIndex),
-          context,
-          `table column "${String(column.id ?? column.title)}"`,
-        ),
-        inlineStyle,
-      });
-    }
-
-    if (bodyRowHeight !== undefined) {
-      builder.setRowHeight(context.sheet.id, {
-        row: absoluteRow,
-        height: bodyRowHeight,
-      });
-    }
-
-    if (hidden === true) {
-      builder.setRowHidden(context.sheet.id, {
-        row: absoluteRow,
-        hidden,
-      });
-    }
-
-    cursor.advanceRows();
   }
 }
 
@@ -536,21 +432,44 @@ function compileTableDataRow(
   bodyRowHeight?: number,
   hidden?: boolean,
 ): void {
-  compileTableDataRows(
-    [rowData],
-    dataIndex,
-    context,
-    cursor,
-    builder,
-    leafColumns,
-    tableColumnIdMap,
-    variables,
-    bodyStyle,
-    bandStyle,
-    inlineStyle,
-    bodyRowHeight,
-    hidden,
-  );
+  const absoluteRow = cursor.row;
+  const formulaContext = createTableRowFormulaContext(tableColumnIdMap, absoluteRow, cursor.column, context);
+
+  for (const [columnOffset, column] of leafColumns.entries()) {
+    const value = resolveTableCellValue(rowData, column);
+    assertTableCellValue(value);
+    const compiledContent = compileCellContent(interpolateCellValue(value, variables), formulaContext);
+    const staticStyle = column.bodyStyle ?? column.style ?? bandStyle ?? bodyStyle;
+
+    builder.addCell(context.sheet.id, {
+      row: absoluteRow,
+      column: cursor.column + columnOffset,
+      ...compiledContent,
+      style: resolveCellStyle(
+        staticStyle,
+        column.styleResolver?.(compiledContent.value, rowData, dataIndex),
+        context,
+        `table column "${String(column.id ?? column.title)}"`,
+      ),
+      inlineStyle,
+    });
+  }
+
+  if (bodyRowHeight !== undefined) {
+    builder.setRowHeight(context.sheet.id, {
+      row: absoluteRow,
+      height: bodyRowHeight,
+    });
+  }
+
+  if (hidden === true) {
+    builder.setRowHidden(context.sheet.id, {
+      row: absoluteRow,
+      hidden,
+    });
+  }
+
+  cursor.advanceRows();
 }
 
 interface CompileTableSectionRowContext {
@@ -567,10 +486,7 @@ interface CompileTableSectionRowContext {
   variables: VariableScope;
 }
 
-function compileTableSectionRow(
-  sectionRow: TableSectionRow<Record<string, unknown>>,
-  options: CompileTableSectionRowContext,
-): void {
+function compileTableSectionRow(sectionRow: TableSectionRow, options: CompileTableSectionRowContext): void {
   const {
     allRows,
     allRenderedRows,
@@ -671,27 +587,12 @@ function compileTableSectionRow(
   cursor.advanceRows();
 }
 
-function compileTableFooterRow(
-  footerRow: TableFooterRow<Record<string, unknown>>,
-  options: CompileTableSectionRowContext,
-): void {
-  compileTableSectionRow(
-    {
-      type: 'section',
-      style: footerRow.style,
-      height: footerRow.height,
-      cells: footerRow.cells,
-    },
-    options,
-  );
-}
-
 function resolveTableFooterRows(
-  block: Extract<Block, { type: 'table' }>,
+  block: Extract<Block, { type: 'table' | 'table-groups' }>,
   leafColumns: TableLeafColumn[],
-): TableFooterRow<Record<string, unknown>>[] {
+): TableFooterRow[] {
   if (block.footerRows) {
-    return [...block.footerRows] as TableFooterRow<Record<string, unknown>>[];
+    return [...block.footerRows] as TableFooterRow[];
   }
 
   const hasSummary = leafColumns.some((column) => column.summary !== undefined);
@@ -722,30 +623,6 @@ function resolveTableFooterRows(
   ];
 }
 
-function createSummaryFormula(columnId: string, summary: NonNullable<TableLeafColumn['summary']>): CellContent {
-  if (summary && typeof summary === 'object') {
-    return summary;
-  }
-
-  const range = {
-    type: 'range' as const,
-    startId: columnId,
-    endId: columnId,
-    scope: 'allRows' as const,
-  };
-
-  switch (summary) {
-    case 'sum':
-      return { type: 'sum', range };
-    case 'count':
-      return { type: 'call', name: 'COUNT', args: [range] };
-    case 'average':
-      return { type: 'call', name: 'AVERAGE', args: [range] };
-    default:
-      return assertNeverSummary(summary);
-  }
-}
-
 function resolveCellStyle(
   staticStyle: StyleValue | undefined,
   dynamicStyle: StyleValue | undefined,
@@ -771,112 +648,57 @@ function resolveCellStyle(
   return dynamicStyle;
 }
 
-function createTableInlineStyle(border: TableBorderDefinition | undefined): CellStyleDefinition | undefined {
-  if (!border) {
-    return undefined;
-  }
-
-  return {
-    border: typeof border === 'string' ? createAllSidesBorder(border) : border,
-  };
-}
-
-function createAllSidesBorder(style: ExcelJS.BorderStyle): Partial<ExcelJS.Borders> {
-  return {
-    top: { style },
-    right: { style },
-    bottom: { style },
-    left: { style },
-  };
-}
-
 interface RenderedTableDataRow {
   data: Record<string, unknown>;
   row: number;
 }
 
-function resolveSectionCellColumnOffset(
-  cell: TableSectionCell<Record<string, unknown>>,
-  cellIndex: number,
-  tableColumnIdMap: Map<string, number>,
-  occupiedColumns: Set<number>,
-): number {
-  if (cell.column !== undefined) {
-    return cell.column - 1;
-  }
-
-  if (cell.columnId !== undefined) {
-    const offset = tableColumnIdMap.get(cell.columnId);
-
-    if (offset === undefined) {
-      throw new ReportEngineError(`Table section row references unknown columnId "${cell.columnId}".`);
-    }
-
-    return offset;
-  }
-
-  let offset = cellIndex === 0 ? 0 : Math.max(...occupiedColumns) + 1;
-
-  while (occupiedColumns.has(offset)) {
-    offset += 1;
-  }
-
-  return offset;
+interface CompileTableDataRowsWithTrackingContext {
+  allRenderedRows: RenderedTableDataRow[];
+  block: Extract<Block, { type: 'table' | 'table-groups' }>;
+  builder: RenderPlanBuilder;
+  context: SheetContext;
+  cursor: LayoutCursor;
+  leafColumns: TableLeafColumn[];
+  tableColumnIdMap: Map<string, number>;
+  tableInlineStyle?: CellStyleDefinition;
+  trackedRows?: RenderedTableDataRow[];
+  variables: VariableScope;
 }
 
-function resolveSectionCellColSpan(
-  cell: TableSectionCell<Record<string, unknown>>,
-  columnOffset: number,
-  tableWidth: number,
-): number {
-  const colSpan = cell.colSpan === 'remaining' ? tableWidth - columnOffset : (cell.colSpan ?? 1);
+function compileTableDataRowsWithTracking(
+  rows: readonly Record<string, unknown>[],
+  firstDataIndex: number,
+  options: CompileTableDataRowsWithTrackingContext,
+): void {
+  for (const [rowOffset, rowData] of rows.entries()) {
+    const dataIndex = firstDataIndex + rowOffset;
+    const rowIndex = options.cursor.row;
 
-  if (columnOffset < 0 || columnOffset >= tableWidth || columnOffset + colSpan > tableWidth) {
-    throw new ReportEngineError('Table section row cell range exceeds table width.');
+    compileTableDataRow(
+      rowData,
+      dataIndex,
+      options.context,
+      options.cursor,
+      options.builder,
+      options.leafColumns,
+      options.tableColumnIdMap,
+      options.variables,
+      options.block.bodyStyle,
+      dataIndex % 2 === 0 ? options.block.oddRowStyle : options.block.evenRowStyle,
+      options.tableInlineStyle,
+      options.block.bodyRowHeight,
+      options.block.rowHidden?.(rowData, dataIndex),
+    );
+
+    const renderedRow = {
+      data: rowData,
+      row: rowIndex,
+    };
+
+    options.trackedRows?.push(renderedRow);
+    options.allRenderedRows.push(renderedRow);
   }
-
-  return colSpan;
-}
-
-function resolveSectionCellValue(
-  cell: TableSectionCell<Record<string, unknown>>,
-  context: TableSectionCellContext<Record<string, unknown>>,
-): unknown {
-  if (typeof cell.value === 'function') {
-    return cell.value(context);
-  }
-
-  return cell.value ?? null;
-}
-
-function collectTableDataRows(block: Extract<Block, { type: 'table' }>): Record<string, unknown>[] {
-  if (!Array.isArray(block.data)) {
-    return [];
-  }
-
-  return block.data.filter((item) => !isTableSectionRow(item)) as Record<string, unknown>[];
-}
-
-function isTableSectionRow(item: unknown): item is TableSectionRow<Record<string, unknown>> {
-  return typeof item === 'object' && item !== null && 'type' in item && item.type === 'section';
-}
-
-function createTableColumnIdMap(columns: TableLeafColumn[]): Map<string, number> {
-  const idMap = new Map<string, number>();
-
-  for (const [columnOffset, column] of columns.entries()) {
-    if (!column.id) {
-      continue;
-    }
-
-    if (idMap.has(String(column.id))) {
-      throw new ReportEngineError(`Duplicate formula cell id "${String(column.id)}".`);
-    }
-
-    idMap.set(String(column.id), columnOffset);
-  }
-
-  return idMap;
 }
 
 function createTableRowFormulaContext(
@@ -952,13 +774,6 @@ function createTableRowFormulaContext(
         formatCellAddress({ row, column: firstColumn + endColumnOffset }),
       ].join(':');
     },
-    resolveNamedRange(name: string): string {
-      if (context.namedRangeNames && !context.namedRangeNames.has(name)) {
-        throw new ReportEngineError(`Formula references unknown named range "${name}".`);
-      }
-
-      return name;
-    },
   };
 }
 
@@ -974,7 +789,6 @@ function createTableSectionRowFormulaContext(
 
   return {
     resolveCellId: rowContext.resolveCellId,
-    resolveNamedRange: rowContext.resolveNamedRange,
     resolveRangeIds(startId: string, endId: string, sheetId?: string, scope?: FormulaRangeScope): string {
       if (!scope) {
         return rowContext.resolveRangeIds(startId, endId, sheetId);
@@ -1043,14 +857,6 @@ function formatTableRowRange(startRow: number, endRow: number, startColumn: numb
   ].join(':');
 }
 
-function registerCellId(idMap: Map<string, CellAddress>, registryKey: string, address: CellAddress): void {
-  if (idMap.has(registryKey)) {
-    throw new ReportEngineError(`Duplicate formula cell id "${registryKey}".`);
-  }
-
-  idMap.set(registryKey, address);
-}
-
 function createBlockVariableScope(context: SheetContext, block: Block): VariableScope {
   return {
     workbook: context.variables.workbook,
@@ -1081,108 +887,4 @@ function assertTableCellValue(value: unknown): asserts value is CellContent {
   }
 
   throw new ReportEngineError('Table cell values must resolve to a supported cell value.');
-}
-
-interface HeaderMatrixCell {
-  title: string;
-  style?: StyleValue;
-  rowOffset: number;
-  columnOffset: number;
-  rowSpan: number;
-  colSpan: number;
-}
-
-type TableColumnNode = Extract<Block, { type: 'table' }>['columns'][number];
-type TableLeafColumn = TableColumnNode & { children?: undefined };
-
-function calculateHeaderDepth(columns: readonly TableColumnNode[]): number {
-  return Math.max(
-    ...columns.map((column) => {
-      if (column.children && column.children.length > 0) {
-        return getChildrenRowOffset(column) + calculateHeaderDepth(column.children);
-      }
-
-      return 1;
-    }),
-  );
-}
-
-function flattenLeafColumns(columns: readonly TableColumnNode[]): TableLeafColumn[] {
-  return columns.flatMap((column) => {
-    if (column.children && column.children.length > 0) {
-      return flattenLeafColumns(column.children);
-    }
-
-    return [column as TableLeafColumn];
-  });
-}
-
-function buildHeaderMatrix(columns: readonly TableColumnNode[], headerDepth: number): HeaderMatrixCell[] {
-  const cells: HeaderMatrixCell[] = [];
-  let columnOffset = 0;
-
-  for (const column of columns) {
-    columnOffset += appendHeaderCell(cells, column, 0, columnOffset, headerDepth);
-  }
-
-  return cells;
-}
-
-function appendHeaderCell(
-  cells: HeaderMatrixCell[],
-  column: TableColumnNode,
-  rowOffset: number,
-  columnOffset: number,
-  headerDepth: number,
-): number {
-  const childColumns = column.children ?? [];
-  const isParent = childColumns.length > 0;
-  const childrenRowOffset = isParent ? getChildrenRowOffset(column) : 0;
-  const colSpan = isParent ? countLeafColumns(childColumns) : 1;
-  const rowSpan = isParent ? childrenRowOffset : headerDepth - rowOffset;
-
-  cells.push({
-    title: column.title,
-    style: column.headerStyle ?? column.style,
-    rowOffset,
-    columnOffset,
-    rowSpan,
-    colSpan,
-  });
-
-  if (!isParent) {
-    return 1;
-  }
-
-  let childColumnOffset = columnOffset;
-
-  for (const childColumn of childColumns) {
-    childColumnOffset += appendHeaderCell(
-      cells,
-      childColumn,
-      rowOffset + childrenRowOffset,
-      childColumnOffset,
-      headerDepth,
-    );
-  }
-
-  return colSpan;
-}
-
-function getChildrenRowOffset(column: TableColumnNode): number {
-  return column.childrenRowOffset ?? 1;
-}
-
-function countLeafColumns(columns: readonly TableColumnNode[]): number {
-  return columns.reduce((total, column) => {
-    if (column.children && column.children.length > 0) {
-      return total + countLeafColumns(column.children);
-    }
-
-    return total + 1;
-  }, 0);
-}
-
-function assertNeverSummary(value: never): never {
-  throw new ReportEngineError(`Unsupported table summary "${String(value)}".`);
 }

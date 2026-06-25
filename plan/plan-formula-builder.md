@@ -271,7 +271,7 @@ for (const namedRange of renderPlan.namedRanges ?? []) {
 ### Dùng với builder
 
 ```ts
-defineWorkbook({
+const workbook = {
   namedRanges: [
     { name: 'SCORE_RANGE', sheetId: 'summary', startId: 'score_start', endId: 'score_end' },
   ],
@@ -297,7 +297,7 @@ defineWorkbook({
       ],
     },
   ],
-});
+};
 ```
 
 ---
@@ -546,4 +546,4 @@ Không block compile nếu thiếu cache. Warning system sẽ được thêm ở
 - **Warning khi thiếu `formulaResult`:** Không implement trong phase này. Để lại cho Diagnostic System phase riêng.
 - **`f.sumif`, `f.countif`, `f.hlookup`, `f.index`, `f.match`:** Không include phase này — để lại cho phase formula expansion tiếp theo nếu có nhu cầu thực tế.
 - **TypeScript typed `f` với generic workbook:** Hiện tại `f.ref(id)` không validate id tồn tại trong workbook tại compile time. Muốn có thì cần `f` nhận workbook type generic — phức tạp hơn nhiều, để phase sau nếu cần.
-- **`f.xref` cross-sheet:** Builder `f.xref(sheetId, id)` không validate `sheetId` tại compile time vì builder không biết workbook context. Validation vẫn xảy ra tại `defineWorkbook` như hiện tại.
+- **`f.xref` cross-sheet:** Builder `f.xref(sheetId, id)` không validate `sheetId` tại compile time vì builder không biết workbook context. Validation xảy ra khi compile/render workbook.
