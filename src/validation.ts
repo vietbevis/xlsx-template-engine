@@ -16,34 +16,9 @@ const functionSchema = z.custom<(...args: never[]) => unknown>((value) => typeof
 const formulaSchema: z.ZodType<unknown> = z.lazy(() =>
   z.discriminatedUnion('type', [
     z.object({
-      type: z.literal('raw'),
-      expression: nonEmptyString.refine((value) => !value.trimStart().startsWith('=')),
-    }),
-    z.object({ type: z.literal('literal'), value: z.union([z.string(), z.number(), z.boolean(), z.null()]) }),
-    z.object({
-      type: z.literal('sum'),
-      range: formulaRangeSchema.optional(),
-      values: z.array(formulaSchema).nonempty().optional(),
-    }),
-    z.object({ type: z.literal('round'), value: formulaSchema, digits: z.number().int().nonnegative() }),
-    z.object({ type: z.literal('if'), condition: formulaSchema, whenTrue: formulaSchema, whenFalse: formulaSchema }),
-    z.object({
-      type: z.literal('call'),
-      name: z.string().regex(/^[A-Za-z][A-Za-z0-9_.]*$/),
-      args: z.array(formulaSchema),
-    }),
-    z.object({ type: z.literal('max'), values: z.array(formulaSchema).nonempty() }),
-    z.object({ type: z.literal('min'), values: z.array(formulaSchema).nonempty() }),
-    z.object({ type: z.literal('average'), range: formulaRangeSchema }),
-    z.object({ type: z.literal('count'), range: formulaRangeSchema }),
-    z.object({ type: z.literal('counta'), range: formulaRangeSchema }),
-    z.object({ type: z.literal('concatenate'), values: z.array(formulaSchema).nonempty() }),
-    z.object({ type: z.literal('iferror'), value: formulaSchema, fallback: formulaSchema }),
-    z.object({
-      type: z.literal('binary'),
-      operator: z.enum(['+', '-', '*', '/', '>', '>=', '<', '<=', '=', '<>']),
-      left: formulaSchema,
-      right: formulaSchema,
+      type: z.literal('formula_template'),
+      strings: z.array(z.string()),
+      exprs: z.array(z.union([z.string(), z.number(), z.boolean(), z.null(), formulaSchema])),
     }),
     z.object({
       type: z.literal('range'),

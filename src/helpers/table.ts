@@ -1,4 +1,5 @@
 import type ExcelJS from 'exceljs';
+import { f } from '../formula';
 import { ReportEngineError } from '../errors';
 import type {
   Block,
@@ -106,15 +107,15 @@ export function createTableInlineStyle(border: TableBorderDefinition | undefined
 export function createSummaryFormula(columnId: string, summary: NonNullable<TableLeafColumn['summary']>): CellContent {
   if (summary && typeof summary === 'object') return summary;
 
-  const range = { type: 'range' as const, startId: columnId, endId: columnId, scope: 'allRows' as const };
+  const range = f.range(columnId, columnId, { scope: 'allRows' });
 
   switch (summary) {
     case 'sum':
-      return { type: 'sum', range };
+      return f`SUM(${range})`;
     case 'count':
-      return { type: 'call', name: 'COUNT', args: [range] };
+      return f`COUNT(${range})`;
     case 'average':
-      return { type: 'call', name: 'AVERAGE', args: [range] };
+      return f`AVERAGE(${range})`;
     default:
       return assertNeverSummary(summary);
   }
@@ -174,4 +175,3 @@ function createAllSidesBorder(style: ExcelJS.BorderStyle): Partial<ExcelJS.Borde
 function assertNeverSummary(value: never): never {
   throw new ReportEngineError(`Unsupported table summary "${String(value)}".`);
 }
-

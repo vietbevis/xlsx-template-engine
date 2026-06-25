@@ -10,6 +10,7 @@ import {
   ValidationError,
   compileWorkbook,
   renderWorkbook,
+  f,
   type WorkbookDefinition,
 } from '../src';
 
@@ -36,7 +37,7 @@ function testFormulaErrorClass(): void {
           {
             id: 'sheet',
             name: 'Sheet',
-            blocks: [{ type: 'grid', rows: [{ cells: [{ value: { type: 'ref', id: 'missing' } }] }] }],
+            blocks: [{ type: 'grid', rows: [{ cells: [{ value: f.ref('missing') }] }] }],
           },
         ],
       }),
@@ -63,7 +64,7 @@ async function testSectionRowCanReferenceLaterCellId(): Promise<void> {
                 footerRows: [
                   {
                     cells: [
-                      { columnId: 'amount', value: { type: 'ref', id: 'section_label' } },
+                      { columnId: 'amount', value: f.ref('section_label') },
                       { id: 'section_label', columnId: 'name', value: 'Total' },
                     ],
                   },

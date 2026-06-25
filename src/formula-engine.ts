@@ -1,13 +1,6 @@
 import { FormulaError } from './errors';
 import { assertPositiveInteger, isPlainObject } from './helpers/utils';
-import type {
-  CellContent,
-  FormulaBinaryOperator,
-  FormulaDefinition,
-  FormulaRangeReference,
-  FormulaRangeScope,
-  WriterCell,
-} from './types';
+import type { CellContent, FormulaDefinition, FormulaExpression, FormulaRangeScope, WriterCell } from './types';
 
 export interface FormulaCompileContext {
   resolveCellId(id: string, sheetId?: string): string;
@@ -31,10 +24,12 @@ export function compileCellContent(
 
 export function compileFormula(formula: FormulaDefinition, context?: FormulaCompileContext): string {
   switch (formula.type) {
-    case 'raw':
-      return compileRawFormula(formula.expression);
-    case 'literal':
-      return compileLiteralFormula(formula.value);
+    case 'formula_template':
+      return formula.strings.reduce((result, str, i) => {
+        const rawExpr = formula.exprs[i];
+        const expr = rawExpr !== undefined ? compileExpression(rawExpr, context) : '';
+        return result + str + expr;
+      }, '');
     case 'ref':
       return requireCompileContext(context).resolveCellId(formula.id, formula.sheetId);
     case 'range':
@@ -44,41 +39,16 @@ export function compileFormula(formula: FormulaDefinition, context?: FormulaComp
         formula.sheetId,
         formula.scope,
       );
-    case 'sum':
-      return `SUM(${compileSumArguments(formula.range, formula.values, context)})`;
-    case 'round':
-      return `ROUND(${compileFormula(formula.value, context)},${formula.digits})`;
-    case 'if':
-      return [
-        'IF(',
-        compileFormula(formula.condition, context),
-        ',',
-        compileFormula(formula.whenTrue, context),
-        ',',
-        compileFormula(formula.whenFalse, context),
-        ')',
-      ].join('');
-    case 'call':
-      return `${compileFunctionName(formula.name)}(${formula.args.map((arg) => compileFormula(arg, context)).join(',')})`;
-    case 'max':
-      return `MAX(${formula.values.map((value) => compileFormula(value, context)).join(',')})`;
-    case 'min':
-      return `MIN(${formula.values.map((value) => compileFormula(value, context)).join(',')})`;
-    case 'average':
-      return `AVERAGE(${compileRangeReference(formula.range, context)})`;
-    case 'count':
-      return `COUNT(${compileRangeReference(formula.range, context)})`;
-    case 'counta':
-      return `COUNTA(${compileRangeReference(formula.range, context)})`;
-    case 'concatenate':
-      return `CONCATENATE(${formula.values.map((value) => compileFormula(value, context)).join(',')})`;
-    case 'iferror':
-      return `IFERROR(${compileFormula(formula.value, context)},${compileFormula(formula.fallback, context)})`;
-    case 'binary':
-      return `(${compileFormula(formula.left, context)}${compileBinaryOperator(formula.operator)}${compileFormula(formula.right, context)})`;
     default:
       return assertNever(formula);
   }
+}
+
+function compileExpression(expr: FormulaExpression, context?: FormulaCompileContext): string {
+  if (expr === null || expr === undefined) return '';
+  if (typeof expr === 'string' || typeof expr === 'number' || typeof expr === 'boolean') return String(expr);
+  if (isFormulaDefinition(expr)) return compileFormula(expr, context);
+  throw new FormulaError('Unsupported formula expression type.');
 }
 
 export function isFormulaDefinition(value: unknown): value is FormulaDefinition {
@@ -86,24 +56,7 @@ export function isFormulaDefinition(value: unknown): value is FormulaDefinition 
     return false;
   }
 
-  return [
-    'raw',
-    'literal',
-    'sum',
-    'round',
-    'if',
-    'call',
-    'binary',
-    'range',
-    'ref',
-    'max',
-    'min',
-    'average',
-    'count',
-    'counta',
-    'concatenate',
-    'iferror',
-  ].includes(value.type);
+  return ['formula_template', 'range', 'ref'].includes(value.type);
 }
 
 export interface CellAddress {
@@ -134,77 +87,8 @@ export function formatCellReference(address: CellAddress, currentSheetId?: strin
   return `${quoteSheetName(address.sheetName)}!${localAddress}`;
 }
 
-function compileSumArguments(
-  range: FormulaRangeReference | undefined,
-  values: readonly FormulaDefinition[] | undefined,
-  context: FormulaCompileContext | undefined,
-): string {
-  const args = [
-    ...(range
-      ? [requireCompileContext(context).resolveRangeIds(range.startId, range.endId, range.sheetId, range.scope)]
-      : []),
-    ...(values ? values.map((value) => compileFormula(value, context)) : []),
-  ];
-
-  if (args.length === 0) {
-    throw new FormulaError('SUM formula must include a range or values.');
-  }
-
-  return args.join(',');
-}
-
-function compileRangeReference(range: FormulaRangeReference, context: FormulaCompileContext | undefined): string {
-  return requireCompileContext(context).resolveRangeIds(range.startId, range.endId, range.sheetId, range.scope);
-}
-
 function quoteSheetName(sheetName: string): string {
   return `'${sheetName.replace(/'/g, "''")}'`;
-}
-
-function compileRawFormula(expression: string): string {
-  if (typeof expression !== 'string' || expression.trim() === '') {
-    throw new FormulaError('Raw formula expression must be a non-empty string.');
-  }
-
-  if (expression.trimStart().startsWith('=')) {
-    throw new FormulaError("Formula expression must not start with '='.");
-  }
-
-  return expression;
-}
-
-function compileLiteralFormula(value: string | number | boolean | null): string {
-  if (typeof value === 'number') {
-    return String(value);
-  }
-
-  if (typeof value === 'boolean') {
-    return value ? 'TRUE' : 'FALSE';
-  }
-
-  if (value === null) {
-    return '""';
-  }
-
-  return `"${value.replace(/"/g, '""')}"`;
-}
-
-function compileFunctionName(name: string): string {
-  if (!/^[A-Za-z][A-Za-z0-9_.]*$/.test(name)) {
-    throw new FormulaError('Formula function name must be a valid Excel function name.');
-  }
-
-  return name.toUpperCase();
-}
-
-function compileBinaryOperator(operator: FormulaBinaryOperator): string {
-  const supportedOperators = new Set(['+', '-', '*', '/', '>', '>=', '<', '<=', '=', '<>']);
-
-  if (!supportedOperators.has(operator)) {
-    throw new FormulaError(`Formula binary operator "${operator}" is not supported.`);
-  }
-
-  return operator;
 }
 
 function requireCompileContext(context: FormulaCompileContext | undefined): FormulaCompileContext {

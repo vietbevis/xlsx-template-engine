@@ -1,5 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { renderWorkbook } from '../compile';
+import { f } from '../formula';
 import type { WorkbookDefinition } from '../types';
 
 const danhSachDoiTuong = [
@@ -212,12 +213,7 @@ const workbook: WorkbookDefinition = {
                   cpc: 0,
                   dong_hp: 0,
                   tong: 10500000,
-                  thucNhan: {
-                    type: 'binary',
-                    operator: '-',
-                    left: { type: 'ref', id: 'tong' },
-                    right: { type: 'ref', id: 'mucTTChuan' },
-                  },
+                  thucNhan: f`${f.ref('tong')} - ${f.ref('mucTTChuan')}`,
                   kyNhan: '',
                 },
               ],
@@ -235,26 +231,12 @@ const workbook: WorkbookDefinition = {
                 {
                   id: 'tongSoTietChuaHoanThanhNCKH',
                   columnId: 'soTietChuaHoanThanhNCKH',
-                  value: {
-                    type: 'sum',
-                    range: {
-                      startId: 'soTietChuaHoanThanhNCKH',
-                      endId: 'soTietChuaHoanThanhNCKH',
-                      scope: 'currentRows',
-                    },
-                  },
+                  value: f`SUM(${f.range('soTietChuaHoanThanhNCKH', 'soTietChuaHoanThanhNCKH', { scope: 'currentRows' })})`,
                 },
                 {
                   id: 'tongHocKyI_vn',
                   columnId: 'hocKyI_vn',
-                  value: {
-                    type: 'sum',
-                    range: {
-                      startId: 'hocKyI_vn',
-                      endId: 'hocKyI_vn',
-                      scope: 'currentRows',
-                    },
-                  },
+                  value: f`SUM(${f.range('hocKyI_vn', 'hocKyI_vn', { scope: 'currentRows' })})`,
                 },
               ],
             },

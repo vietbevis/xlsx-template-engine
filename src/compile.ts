@@ -125,9 +125,6 @@ export interface WorkbookRenderer {
   writeStream(stream: Writable): Promise<void>;
 }
 
-export function renderWorkbook(
-  workbook: WorkbookDefinition,
-  options: CompileWorkbookOptions = {},
-): ExcelJsWorkbook {
+export function renderWorkbook(workbook: WorkbookDefinition, options: CompileWorkbookOptions = {}): ExcelJsWorkbook {
   return compileWorkbook(workbook, options);
 }
