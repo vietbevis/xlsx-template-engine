@@ -515,13 +515,3 @@ type GridBlockKeys<TBlock extends GridBlock> = TBlock['rows'][number]['cells'][n
     ? Extract<TKey, string>
     : never
   : never;
-
-type TableColumnKeys<TRow, TColumns extends readonly TableColumn<TRow>[]> = TColumns[number] extends infer TColumn
-  ? TColumn extends TableColumn<TRow>
-    ? TColumn extends { children: readonly TableColumn<TRow>[] }
-      ? TableColumnKeys<TRow, TColumn['children']>
-      : TColumn extends { id: infer TKey }
-        ? Extract<TKey, string>
-        : never
-    : never
-  : never;

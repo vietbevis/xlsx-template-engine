@@ -105,51 +105,6 @@ export function isFormulaDefinition(value: unknown): value is FormulaDefinition 
   ].includes(value.type);
 }
 
-export function createFormulaCompileContext(
-  idMap: Map<string, CellAddress>,
-  options: FormulaCompileContextOptions = {},
-): FormulaCompileContext {
-  return {
-    resolveCellId(id: string, sheetId?: string): string {
-      const targetSheetId = sheetId ?? options.currentSheetId;
-      const address = idMap.get(createFormulaId(targetSheetId, id));
-
-      if (!address) {
-        throw new ReportEngineError(`Formula references unknown cell id "${id}".`);
-      }
-
-      return formatCellReference(address, options.currentSheetId);
-    },
-    resolveRangeIds(startId: string, endId: string, sheetId?: string, scope?: FormulaRangeScope): string {
-      if (scope) {
-        throw new ReportEngineError('Scoped formula ranges are only supported inside table section rows.');
-      }
-
-      const targetSheetId = sheetId ?? options.currentSheetId;
-      const start = idMap.get(createFormulaId(targetSheetId, startId));
-      const end = idMap.get(createFormulaId(targetSheetId, endId));
-
-      if (!start) {
-        throw new ReportEngineError(`Formula references unknown range start id "${startId}".`);
-      }
-
-      if (!end) {
-        throw new ReportEngineError(`Formula references unknown range end id "${endId}".`);
-      }
-
-      if (end.row < start.row || end.column < start.column) {
-        throw new ReportEngineError('Formula range end id must resolve after start id.');
-      }
-
-      return `${formatCellReference(start, options.currentSheetId)}:${formatCellReference(end, options.currentSheetId)}`;
-    },
-  };
-}
-
-export interface FormulaCompileContextOptions {
-  currentSheetId?: string;
-}
-
 export interface CellAddress {
   row: number;
   column: number;
