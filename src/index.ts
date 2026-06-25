@@ -64,7 +64,6 @@ export type {
   RenderCell,
   RenderColumnVisibility,
   RenderColumnWidth,
-  RenderCommand,
   RenderLink,
   RenderMergeRange,
   RenderPlan,
@@ -77,4 +76,4 @@ export type {
 
 export { renderWorkbook } from './renderer';
 
-export type { WorkbookOutputAdapter, WorkbookRenderer, WorkbookRenderOptions } from './renderer';
+export type { WorkbookRenderer, WorkbookRenderOptions } from './renderer';

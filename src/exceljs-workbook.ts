@@ -9,6 +9,12 @@ interface StyleableWorksheet {
   getCell(row: number, column: number): ExcelJS.Cell;
 }
 
+interface RenderableWorksheet extends StyleableWorksheet {
+  getColumn(column: number): ExcelJS.Column;
+  getRow(row: number): ExcelJS.Row;
+  mergeCells(startRow: number, startColumn: number, endRow: number, endColumn: number): void;
+}
+
 type CellPlanIndex = Map<number, Map<number, RenderCell>>;
 type FormulaResult = string | number | boolean | Date | ExcelJS.CellErrorValue;
 
@@ -20,25 +26,26 @@ interface StyledMergeCoverage {
   style: CellStyleDefinition;
 }
 
-export class ExcelJsWorkbookAdapter {
-  async writeFile(renderPlan: RenderPlan, filePath: string): Promise<void> {
-    const workbook = this.createStreamingWorkbook(renderPlan, { filename: filePath });
+export class ExcelJsWorkbookRenderer {
+  constructor(private readonly renderPlan: RenderPlan) {}
+
+  async writeFile(filePath: string): Promise<void> {
+    const workbook = this.createStreamingWorkbook({ filename: filePath });
     await workbook.commit();
   }
 
-  async writeBuffer(renderPlan: RenderPlan): Promise<Buffer> {
-    const workbook = this.createWorkbook(renderPlan);
+  async writeBuffer(): Promise<Buffer> {
+    const workbook = this.createWorkbook();
     const buffer = await workbook.xlsx.writeBuffer();
     return Buffer.from(buffer);
   }
 
-  async writeStream(renderPlan: RenderPlan, stream: Writable): Promise<void> {
-    const workbook = this.createStreamingWorkbook(renderPlan, { stream });
+  async writeStream(stream: Writable): Promise<void> {
+    const workbook = this.createStreamingWorkbook({ stream });
     await workbook.commit();
   }
 
   private createStreamingWorkbook(
-    renderPlan: RenderPlan,
     options: Partial<ExcelJS.stream.xlsx.WorkbookStreamWriterOptions>,
   ): ExcelJS.stream.xlsx.WorkbookWriter {
     const workbook = new ExcelJS.stream.xlsx.WorkbookWriter({
@@ -46,111 +53,95 @@ export class ExcelJsWorkbookAdapter {
       useStyles: true,
     });
 
-    if (renderPlan.metadata?.author) workbook.creator = renderPlan.metadata.author;
+    if (this.renderPlan.metadata?.author) workbook.creator = this.renderPlan.metadata.author;
 
-    for (const sheetPlan of renderPlan.sheets) {
+    for (const sheetPlan of this.renderPlan.sheets) {
       const sheet = workbook.addWorksheet(sheetPlan.name, {
         views: sheetPlan.views,
       });
 
-      const cellPlanIndex = this.createCellPlanIndex(sheetPlan);
-      const mergeCoverage = this.createStyledMergeCoverage(sheetPlan, renderPlan, cellPlanIndex);
-      const mergeCoverageByRow = this.indexMergeCoverageByRow(mergeCoverage);
+      this.renderSheet(sheet, sheetPlan, { streaming: true });
+    }
 
-      for (const columnWidth of sheetPlan.columnWidths) {
-        sheet.getColumn(columnWidth.column).width = columnWidth.width;
+    return workbook;
+  }
+
+  private createWorkbook(): ExcelJS.Workbook {
+    const workbook = new ExcelJS.Workbook();
+
+    if (this.renderPlan.metadata?.author) workbook.creator = this.renderPlan.metadata.author;
+
+    for (const sheetPlan of this.renderPlan.sheets) {
+      const sheet = workbook.addWorksheet(sheetPlan.name, {
+        views: sheetPlan.views,
+      });
+
+      this.renderSheet(sheet, sheetPlan, { streaming: false });
+    }
+
+    return workbook;
+  }
+
+  private renderSheet(sheet: RenderableWorksheet, sheetPlan: RenderPlanSheet, options: { streaming: boolean }): void {
+    const mergeCoverage = this.createStyledMergeCoverage(sheetPlan, this.createCellPlanIndex(sheetPlan));
+    const mergeCoverageByRow = options.streaming ? this.indexMergeCoverageByRow(mergeCoverage) : undefined;
+
+    this.applySheetLayout(sheet, sheetPlan);
+
+    if (options.streaming) {
+      this.applySheetMerges(sheet, sheetPlan);
+    }
+
+    for (const rowPlan of sheetPlan.rows) {
+      const row = sheet.getRow(rowPlan.index);
+
+      for (const cellPlan of rowPlan.cells) {
+        this.applyCellPlan(row.getCell(cellPlan.column), cellPlan);
       }
 
-      for (const columnVisibility of sheetPlan.columnVisibility ?? []) {
-        sheet.getColumn(columnVisibility.column).hidden = columnVisibility.hidden;
-      }
-
-      for (const rowHeight of sheetPlan.rowHeights) {
-        sheet.getRow(rowHeight.row).height = rowHeight.height;
-      }
-
-      for (const rowVisibility of sheetPlan.rowVisibility ?? []) {
-        sheet.getRow(rowVisibility.row).hidden = rowVisibility.hidden;
-      }
-
-      for (const merge of sheetPlan.merges) {
-        sheet.mergeCells(merge.startRow, merge.startColumn, merge.endRow, merge.endColumn);
-      }
-
-      for (const rowPlan of sheetPlan.rows) {
-        const row = sheet.getRow(rowPlan.index);
-
-        for (const cellPlan of rowPlan.cells) {
-          this.applyCellPlan(row.getCell(cellPlan.column), cellPlan, renderPlan);
-        }
-
+      if (options.streaming) {
         // Streaming rows cannot be edited after commit.
-        this.applyMergedStyleCoverage(sheet, mergeCoverageByRow.get(rowPlan.index) ?? [], rowPlan.index);
-
+        this.applyMergedStyleCoverage(sheet, mergeCoverageByRow?.get(rowPlan.index) ?? [], rowPlan.index);
         row.commit();
       }
     }
 
-    return workbook;
-  }
-
-  private createWorkbook(renderPlan: RenderPlan): ExcelJS.Workbook {
-    const workbook = new ExcelJS.Workbook();
-
-    if (renderPlan.metadata?.author) workbook.creator = renderPlan.metadata.author;
-
-    for (const sheetPlan of renderPlan.sheets) {
-      const sheet = workbook.addWorksheet(sheetPlan.name, {
-        views: sheetPlan.views,
-      });
-
-      const cellPlanIndex = this.createCellPlanIndex(sheetPlan);
-      const mergeCoverage = this.createStyledMergeCoverage(sheetPlan, renderPlan, cellPlanIndex);
-
-      for (const columnWidth of sheetPlan.columnWidths) {
-        sheet.getColumn(columnWidth.column).width = columnWidth.width;
-      }
-
-      for (const columnVisibility of sheetPlan.columnVisibility ?? []) {
-        sheet.getColumn(columnVisibility.column).hidden = columnVisibility.hidden;
-      }
-
-      for (const rowHeight of sheetPlan.rowHeights) {
-        sheet.getRow(rowHeight.row).height = rowHeight.height;
-      }
-
-      for (const rowVisibility of sheetPlan.rowVisibility ?? []) {
-        sheet.getRow(rowVisibility.row).hidden = rowVisibility.hidden;
-      }
-
-      for (const rowPlan of sheetPlan.rows) {
-        const row = sheet.getRow(rowPlan.index);
-
-        for (const cellPlan of rowPlan.cells) {
-          this.applyCellPlan(row.getCell(cellPlan.column), cellPlan, renderPlan);
-        }
-      }
-
-      for (const merge of sheetPlan.merges) {
-        sheet.mergeCells(merge.startRow, merge.startColumn, merge.endRow, merge.endColumn);
-      }
-
+    if (!options.streaming) {
+      this.applySheetMerges(sheet, sheetPlan);
       this.applyMergedStyleCoverage(sheet, mergeCoverage);
     }
-
-    return workbook;
   }
 
-  private applyCellPlan(
-    cell: ExcelJS.Cell,
-    cellPlan: RenderPlan['sheets'][number]['rows'][number]['cells'][number],
-    renderPlan: RenderPlan,
-  ): void {
+  private applySheetLayout(sheet: RenderableWorksheet, sheetPlan: RenderPlanSheet): void {
+    for (const columnWidth of sheetPlan.columnWidths) {
+      sheet.getColumn(columnWidth.column).width = columnWidth.width;
+    }
+
+    for (const columnVisibility of sheetPlan.columnVisibility ?? []) {
+      sheet.getColumn(columnVisibility.column).hidden = columnVisibility.hidden;
+    }
+
+    for (const rowHeight of sheetPlan.rowHeights) {
+      sheet.getRow(rowHeight.row).height = rowHeight.height;
+    }
+
+    for (const rowVisibility of sheetPlan.rowVisibility ?? []) {
+      sheet.getRow(rowVisibility.row).hidden = rowVisibility.hidden;
+    }
+  }
+
+  private applySheetMerges(sheet: RenderableWorksheet, sheetPlan: RenderPlanSheet): void {
+    for (const merge of sheetPlan.merges) {
+      sheet.mergeCells(merge.startRow, merge.startColumn, merge.endRow, merge.endColumn);
+    }
+  }
+
+  private applyCellPlan(cell: ExcelJS.Cell, cellPlan: RenderCell): void {
     cell.value = cellPlan.formula
       ? this.createFormulaValue(cellPlan.formula, cellPlan.formulaResult ?? cellPlan.value)
       : (cellPlan.value ?? null);
 
-    const style = this.resolveCellStyle(cellPlan, renderPlan);
+    const style = this.resolveCellStyle(cellPlan);
 
     if (style) {
       cell.style = cloneStylePart(style) as Partial<ExcelJS.Style>;
@@ -190,11 +181,7 @@ export class ExcelJsWorkbookAdapter {
     return index;
   }
 
-  private createStyledMergeCoverage(
-    sheetPlan: RenderPlanSheet,
-    renderPlan: RenderPlan,
-    cellPlanIndex: CellPlanIndex,
-  ): StyledMergeCoverage[] {
+  private createStyledMergeCoverage(sheetPlan: RenderPlanSheet, cellPlanIndex: CellPlanIndex): StyledMergeCoverage[] {
     const coverage: StyledMergeCoverage[] = [];
 
     for (const merge of sheetPlan.merges) {
@@ -204,7 +191,7 @@ export class ExcelJsWorkbookAdapter {
         continue;
       }
 
-      const style = this.resolveCellStyle(masterCellPlan, renderPlan);
+      const style = this.resolveCellStyle(masterCellPlan);
 
       if (!style?.border) {
         continue;
@@ -242,14 +229,14 @@ export class ExcelJsWorkbookAdapter {
     return { formula, date1904: false };
   }
 
-  private resolveCellStyle(cellPlan: RenderCell, renderPlan: RenderPlan): CellStyleDefinition | undefined {
-    const baseStyle = this.resolveStyleValue(cellPlan.style, renderPlan);
-    const style = this.mergeCellStyles(renderPlan.defaultStyle, baseStyle);
+  private resolveCellStyle(cellPlan: RenderCell): CellStyleDefinition | undefined {
+    const baseStyle = this.resolveStyleValue(cellPlan.style);
+    const style = this.mergeCellStyles(this.renderPlan.defaultStyle, baseStyle);
 
     return this.mergeCellStyles(style, cellPlan.inlineStyle);
   }
 
-  private resolveStyleValue(style: StyleValue | undefined, renderPlan: RenderPlan): CellStyleDefinition | undefined {
+  private resolveStyleValue(style: StyleValue | undefined): CellStyleDefinition | undefined {
     if (!style) {
       return undefined;
     }
@@ -258,7 +245,7 @@ export class ExcelJsWorkbookAdapter {
       return style;
     }
 
-    const registryStyle = renderPlan.styles?.[style];
+    const registryStyle = this.renderPlan.styles?.[style];
 
     if (!registryStyle) {
       throw new ReportEngineError(`Render plan references unknown style "${style}".`);

@@ -226,7 +226,7 @@ WorkbookDefinition.namedRanges
   → validate (sau collectWorkbookFormulaIds)
   → resolve startId/endId thành CellAddress
   → RenderPlan.namedRanges: ResolvedNamedRange[]
-  → ExcelJsWorkbookAdapter ghi ExcelJS workbook.definedNames
+  → ExcelJsWorkbookRenderer ghi ExcelJS workbook.definedNames
   → compileFormula nhận { type: 'namedRange', name } → emit tên trực tiếp
 ```
 
@@ -497,7 +497,7 @@ Không block compile nếu thiếu cache. Warning system sẽ được thêm ở
 - [ ] Validate `sheetId` và `startId`/`endId` trong `collectWorkbookFormulaIds` sau khi id registry đầy đủ.
 - [ ] Thêm `ResolvedNamedRange` vào `RenderPlan` và `RenderPlanBuilder`.
 - [ ] `compileFormula` xử lý `case 'namedRange'`: validate name tồn tại, emit tên trực tiếp.
-- [ ] `ExcelJsWorkbookAdapter` ghi `workbook.definedNames` sau khi tất cả sheets được tạo.
+- [ ] `ExcelJsWorkbookRenderer` ghi `workbook.definedNames` sau khi tất cả sheets được tạo.
 - [ ] Thêm `f.namedRange(name)` vào builder.
 - [ ] Viết tests: compile formula với named range, validate missing name, adapter ghi đúng defined name, đọc lại file xác nhận.
 
@@ -519,7 +519,7 @@ Không block compile nếu thiếu cache. Warning system sẽ được thêm ở
 - [ ] Thêm `formulaResult?: CellValue` vào `RenderCell` trong `src/compiler/render-plan.ts`.
 - [ ] `compileGridBlock` truyền `formulaResult` vào `builder.addCell` khi có.
 - [ ] `compileTableSectionRow` tương tự.
-- [ ] `ExcelJsWorkbookAdapter.createFormulaValue` dùng `formulaResult ?? value` làm `result`.
+- [ ] `ExcelJsWorkbookRenderer.createFormulaValue` dùng `formulaResult ?? value` làm `result`.
 - [ ] Viết tests: cell có formula + formulaResult → Excel đọc lại thấy đúng cached value.
 
 ---

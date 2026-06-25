@@ -72,11 +72,3 @@ export interface RenderLink {
   target: string;
   tooltip?: string;
 }
-
-export type RenderCommand =
-  | { type: 'cell'; sheetId: string; cell: RenderCell }
-  | { type: 'merge'; sheetId: string; range: RenderMergeRange }
-  | { type: 'columnWidth'; sheetId: string; width: RenderColumnWidth }
-  | { type: 'columnVisibility'; sheetId: string; visibility: RenderColumnVisibility }
-  | { type: 'rowVisibility'; sheetId: string; visibility: RenderRowVisibility }
-  | { type: 'rowHeight'; sheetId: string; height: RenderRowHeight };
