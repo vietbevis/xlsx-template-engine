@@ -284,6 +284,60 @@ export interface TableSectionCellContext<Row = Record<string, unknown>> {
   rowIndex: number;
 }
 
+// ─── Writer types (used by SheetWriter / compileBlock) ────────────────────────
+
+/** Cell data passed to SheetWriter.addCell() */
+export interface WriterCell {
+  row: number;
+  column: number;
+  value?: CellValue;
+  formula?: string;
+  formulaResult?: CellValue;
+  link?: WriterLink;
+  style?: StyleValue;
+  inlineStyle?: CellStyleDefinition;
+}
+
+export interface WriterLink {
+  target: string;
+  tooltip?: string;
+}
+
+export interface WriterMergeRange {
+  startRow: number;
+  startColumn: number;
+  endRow: number;
+  endColumn: number;
+}
+
+export interface WriterColumnWidth {
+  column: number;
+  width: number;
+}
+
+export interface WriterColumnVisibility {
+  column: number;
+  hidden: boolean;
+}
+
+export interface WriterRowHeight {
+  row: number;
+  height: number;
+}
+
+export interface WriterRowVisibility {
+  row: number;
+  hidden: boolean;
+}
+
+export interface WriterSheetView {
+  state: 'frozen';
+  xSplit?: number;
+  ySplit?: number;
+}
+
+// ─── Table column ─────────────────────────────────────────────────────────────
+
 export interface TableColumn<Row = Record<string, unknown>> extends StyleReference {
   title: string;
   id?: keyof Row;
@@ -301,7 +355,7 @@ export interface TableColumn<Row = Record<string, unknown>> extends StyleReferen
 export type TypedFormulaDefinition<
   TWorkbook extends WorkbookDefinition,
   TCurrentSheetId extends string = SheetIds<TWorkbook>,
-  TLocalKeys extends string = SheetGridKeys<TWorkbook, TCurrentSheetId>,
+  TLocalKeys extends string = SheetFormulaKeys<TWorkbook, TCurrentSheetId>,
 > =
   | RawFormulaDefinition
   | LiteralFormulaDefinition
@@ -330,7 +384,7 @@ type TypedRefFormulaDefinition<
       [TSheetId in SheetIds<TWorkbook>]: {
         type: 'ref';
         sheetId: TSheetId;
-        id: SheetGridKeys<TWorkbook, TSheetId>;
+        id: SheetFormulaKeys<TWorkbook, TSheetId>;
       };
     }[SheetIds<TWorkbook>];
 
@@ -350,8 +404,8 @@ type TypedRangeFormulaDefinition<
       [TSheetId in SheetIds<TWorkbook>]: {
         type: 'range';
         sheetId: TSheetId;
-        startId: SheetGridKeys<TWorkbook, TSheetId>;
-        endId: SheetGridKeys<TWorkbook, TSheetId>;
+        startId: SheetFormulaKeys<TWorkbook, TSheetId>;
+        endId: SheetFormulaKeys<TWorkbook, TSheetId>;
         scope?: undefined;
       };
     }[SheetIds<TWorkbook>];
@@ -370,8 +424,8 @@ type TypedFormulaRangeReference<
   | {
       [TSheetId in SheetIds<TWorkbook>]: {
         sheetId: TSheetId;
-        startId: SheetGridKeys<TWorkbook, TSheetId>;
-        endId: SheetGridKeys<TWorkbook, TSheetId>;
+        startId: SheetFormulaKeys<TWorkbook, TSheetId>;
+        endId: SheetFormulaKeys<TWorkbook, TSheetId>;
         scope?: undefined;
       };
     }[SheetIds<TWorkbook>];
@@ -499,19 +553,59 @@ type SheetById<TWorkbook extends WorkbookDefinition, TSheetId extends string> = 
   { id: TSheetId }
 >;
 
-type SheetGridKeys<TWorkbook extends WorkbookDefinition, TSheetId extends string> =
+type SheetFormulaKeys<TWorkbook extends WorkbookDefinition, TSheetId extends string> =
   SheetById<TWorkbook, TSheetId> extends infer TSheet
     ? TSheet extends SheetDefinition
       ? TSheet['blocks'][number] extends infer TBlock
-        ? TBlock extends GridBlock
-          ? GridBlockKeys<TBlock>
-          : never
+        ? BlockFormulaKeys<TBlock>
         : never
       : never
     : never;
 
+type BlockFormulaKeys<TBlock> =
+  | (TBlock extends GridBlock ? GridBlockKeys<TBlock> : never)
+  | (TBlock extends TableBlock ? TableBlockKeys<TBlock> : never)
+  | (TBlock extends TableGroupsBlock ? TableGroupsBlockKeys<TBlock> : never);
+
 type GridBlockKeys<TBlock extends GridBlock> = TBlock['rows'][number]['cells'][number] extends infer TCell
   ? TCell extends { id: infer TKey }
     ? Extract<TKey, string>
+    : never
+  : never;
+
+type TableBlockKeys<TBlock extends TableBlock> =
+  | TableColumnKeys<TBlock['columns']>
+  | TableSectionRowsKeys<TBlock['footerRows']>;
+
+type TableGroupsBlockKeys<TBlock extends TableGroupsBlock> =
+  | TableColumnKeys<TBlock['columns']>
+  | TableSectionRowsKeys<TBlock['footerRows']>
+  | TableGroupKeys<TBlock['groups']>;
+
+type TableGroupKeys<TGroups> = TGroups extends readonly (infer TGroup)[]
+  ? TGroup extends TableGroup
+    ? TableSectionRowsKeys<TGroup['headerRows']> | TableSectionRowsKeys<TGroup['footerRows']>
+    : never
+  : never;
+
+type TableSectionRowsKeys<TRows> = TRows extends readonly (infer TRow)[]
+  ? TRow extends TableSectionRow
+    ? TableSectionCellKeys<TRow['cells']>
+    : never
+  : never;
+
+type TableSectionCellKeys<TCells> = TCells extends readonly (infer TCell)[]
+  ? TCell extends { id: infer TKey }
+    ? Extract<TKey, string>
+    : never
+  : never;
+
+type TableColumnKeys<TColumns> = TColumns extends readonly (infer TColumn)[]
+  ? TColumn extends TableColumn
+    ? TColumn extends { children: infer TChildren }
+      ? TableColumnKeys<TChildren>
+      : TColumn extends { id: infer TKey }
+        ? Extract<TKey, string>
+        : never
     : never
   : never;

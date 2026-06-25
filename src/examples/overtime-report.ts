@@ -80,7 +80,7 @@ const columns = [
   { title: 'Ký nhận', id: 'kyNhan' },
 ] as const;
 
-const workbook = {
+const workbook: WorkbookDefinition = {
   defaultStyle: {
     font: { name: 'Times New Roman' },
   },
@@ -280,7 +280,7 @@ const workbook = {
       ],
     },
   ],
-} as const satisfies WorkbookDefinition;
+};
 
 export async function exportExcel(): Promise<void> {
   const outputPath = 'output/overtime-report-generated.xlsx';

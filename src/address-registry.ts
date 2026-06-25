@@ -2,18 +2,15 @@ import { CompileError } from './errors';
 import type { CellAddress } from './formula-engine';
 
 /**
- * Mutable registry tích lũy địa chỉ ô (row, column) theo id trong suốt
- * quá trình compile single-pass.
- *
- * Thay thế hoàn toàn pre-pass `collectWorkbookFormulaIds` trong compile.ts cũ.
- * Mỗi lần `compileBlock` ghi ô có `id`, nó gọi `register()` ngay tại chỗ.
- * Lookup sau đó qua `resolve()`.
+ * Registry tích lũy địa chỉ ô (row, column) theo id trong suốt quá trình
+ * compile single-pass. Mỗi lần `compileBlock` ghi ô có `id`, nó gọi
+ * `register()` ngay tại chỗ. Lookup sau đó qua `resolve()`.
  */
 export class AddressRegistry {
   private readonly map = new Map<string, CellAddress>();
 
   register(sheetId: string, sheetName: string, id: string, row: number, column: number): void {
-    const key = createAddressKey(sheetId, id);
+    const key = `${sheetId}:${id}`;
 
     if (this.map.has(key)) {
       throw new CompileError(`Duplicate formula cell id "${id}" in sheet "${sheetId}".`, { sheetId, id });
@@ -23,10 +20,6 @@ export class AddressRegistry {
   }
 
   resolve(id: string, sheetId?: string): CellAddress | undefined {
-    return this.map.get(createAddressKey(sheetId, id));
+    return this.map.get(sheetId ? `${sheetId}:${id}` : id);
   }
-}
-
-function createAddressKey(sheetId: string | undefined, id: string): string {
-  return sheetId ? `${sheetId}:${id}` : id;
 }

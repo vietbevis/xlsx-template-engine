@@ -1,17 +1,10 @@
-import type { CompileContext } from './compile-context';
 import { CompileError, ReportEngineError } from './errors';
-import {
-  createGridFormulaContext,
-  createTableRowFormulaContext,
-  createTableSectionFormulaContext,
-  type RenderedDataRow,
-} from './formula-context';
+import { createGridFormulaContext, createTableFormulaContext, type RenderedDataRow } from './formula-context';
 import { compileCellContent, isFormulaDefinition } from './formula-engine';
 import {
   assertGridCellDoesNotOverlap,
   buildHeaderMatrix,
   calculateTableHeaderDepth,
-  collectTableDataRows,
   createSummaryFormula,
   createTableColumnIdMap,
   createTableInlineStyle,
@@ -27,25 +20,29 @@ import type { SheetWriter } from './sheet-writer';
 import type {
   Block,
   CellContent,
-  CellStyleDefinition,
   GridCell,
+  SheetDefinition,
   StyleValue,
   TableFooterRow,
   TableGroup,
   TableLeafColumn,
+  TableSectionCell,
   TableSectionRow,
+  WorkbookDefinition,
 } from './types';
 import { interpolateCellValue, interpolateVariables, type VariableScope } from './variable-engine';
+import { AddressRegistry } from './address-registry';
+
+export interface CompileContext {
+  readonly workbook: WorkbookDefinition;
+  readonly sheet: SheetDefinition;
+  readonly sheetColumnCount: number;
+  readonly variables: VariableScope;
+  readonly registry: AddressRegistry;
+}
 
 // ─── Public entry point ──────────────────────────────────────────────────────
 
-/**
- * Compile một block vào `writer`, cập nhật `row` (cursor dòng hiện tại)
- * và trả về số dòng đã tiêu thụ.
- *
- * Thay vì nhận mutable LayoutCursor, hàm nhận `row` và trả về row mới.
- * Điều này làm rõ side-effect: caller biết chính xác bao nhiêu dòng bị dùng.
- */
 export function compileBlock(block: Block, context: CompileContext, writer: SheetWriter, startRow: number): number {
   switch (block.type) {
     case 'title':
@@ -113,7 +110,6 @@ interface GridPlacement {
   column: number;
   rowSpan: number;
   colSpan: number;
-  rowOffset: number;
 }
 
 function compileGridBlock(
@@ -127,7 +123,7 @@ function compileGridBlock(
   const variables = blockVariables(context, block);
   let rowExtent = block.rows.length;
 
-  // Pass 1: layout — tính vị trí và đăng ký IDs ngay vào registry
+  // Pass 1: layout — compute positions and register IDs into registry
   for (const [rowOffset, gridRow] of block.rows.entries()) {
     const absRow = startRow + rowOffset;
 
@@ -146,19 +142,18 @@ function compileGridBlock(
 
       const absCol = 1 + colOffset;
 
-      // Đăng ký ngay vào registry — single-pass, không cần pre-pass
       if (cell.id) {
         context.registry.register(context.sheet.id, context.sheet.name, cell.id, absRow, absCol);
       }
 
-      placements.push({ cell, row: absRow, column: absCol, rowSpan, colSpan, rowOffset });
+      placements.push({ cell, row: absRow, column: absCol, rowSpan, colSpan });
       markGridOccupied(occupied, rowOffset, colOffset, rowSpan, colSpan);
       rowExtent = Math.max(rowExtent, rowOffset + rowSpan);
       colOffset += colSpan;
     }
   }
 
-  // Pass 2: render — sau khi tất cả IDs đã đăng ký, compile formula
+  // Pass 2: render — all IDs registered, now compile formulas
   const formulaCtx = createGridFormulaContext(context.registry, context.sheet.id);
 
   for (const p of placements) {
@@ -202,305 +197,277 @@ function compileTableBlock(
   writer: SheetWriter,
   startRow: number,
 ): number {
-  const variables = blockVariables(context, block);
-  const headerDepth = calculateTableHeaderDepth(block.columns);
-  const leafColumns = flattenColumns(block.columns);
-  const columnIdMap = createTableColumnIdMap(leafColumns);
-  const tableWidth = leafColumns.length;
-  const allDataRows = collectTableDataRows(block);
-  const inlineStyle = createTableInlineStyle(block.border);
-  const footerRows = resolveFooterRows(block, leafColumns);
-
-  let row = startRow;
-
-  // Header row heights
-  for (const [offset, height] of (block.headerRowHeights ?? []).entries()) {
-    writer.setRowHeight({ row: row + offset, height });
-  }
-
-  // Header cells
-  for (const hCell of buildHeaderMatrix(block.columns, headerDepth)) {
-    writer.addCell({
-      row: row + hCell.rowOffset,
-      column: 1 + hCell.columnOffset,
-      value: interpolateVariables(hCell.title, variables),
-      style: hCell.style ?? block.headerStyle,
-      inlineStyle,
-    });
-
-    if (hCell.rowSpan > 1 || hCell.colSpan > 1) {
-      writer.addMerge({
-        startRow: row + hCell.rowOffset,
-        startColumn: 1 + hCell.columnOffset,
-        endRow: row + hCell.rowOffset + hCell.rowSpan - 1,
-        endColumn: 1 + hCell.columnOffset + hCell.colSpan - 1,
-      });
-    }
-  }
-
-  // Column widths / hidden
-  for (const [offset, col] of leafColumns.entries()) {
-    if (col.width !== undefined) writer.setColumnWidth({ column: 1 + offset, width: col.width });
-    if (col.hidden !== undefined) writer.setColumnHidden({ column: 1 + offset, hidden: col.hidden });
-  }
-
-  row += headerDepth;
-
-  const allRendered: RenderedDataRow[] = [];
-
-  if (block.type === 'table') {
-    row = writeDataRows(block.data as Record<string, unknown>[], 0, allRendered, undefined, row, {
-      block,
-      context,
-      writer,
-      leafColumns,
-      columnIdMap,
-      inlineStyle,
-      variables,
-    });
-  } else {
-    let dataIndex = 0;
-
-    for (const group of block.groups as TableGroup[]) {
-      const groupRendered: RenderedDataRow[] = [];
-
-      for (const sectionRow of group.headerRows ?? []) {
-        row = writeSectionRow(sectionRow, {
-          allDataRows,
-          allRendered,
-          currentRendered: groupRendered,
-          dataIndex,
-          row,
-          tableWidth,
-          columnIdMap,
-          inlineStyle,
-          variables,
-          context,
-          writer,
-        });
-      }
-
-      row = writeDataRows(group.data as Record<string, unknown>[], dataIndex, allRendered, groupRendered, row, {
-        block,
-        context,
-        writer,
-        leafColumns,
-        columnIdMap,
-        inlineStyle,
-        variables,
-      });
-
-      for (const sectionRow of group.footerRows ?? []) {
-        row = writeSectionRow(sectionRow, {
-          allDataRows,
-          allRendered,
-          currentRendered: groupRendered,
-          dataIndex: dataIndex + group.data.length,
-          row,
-          tableWidth,
-          columnIdMap,
-          inlineStyle,
-          variables,
-          context,
-          writer,
-        });
-      }
-
-      dataIndex += group.data.length;
-    }
-  }
-
-  // Table-level footer rows
-  for (const footerRow of footerRows) {
-    row = writeSectionRow(
-      { style: footerRow.style, height: footerRow.height, cells: footerRow.cells },
-      {
-        allDataRows,
-        allRendered,
-        currentRendered: allRendered,
-        dataIndex: allDataRows.length,
-        row,
-        tableWidth,
-        columnIdMap,
-        inlineStyle,
-        variables,
-        context,
-        writer,
-      },
-    );
-  }
-
-  return row;
+  return new TableBlockCompiler(block, context, writer).compile(startRow);
 }
 
 // ─── Table helpers ────────────────────────────────────────────────────────────
 
-interface DataRowsOptions {
-  block: Extract<Block, { type: 'table' | 'table-groups' }>;
-  context: CompileContext;
-  writer: SheetWriter;
-  leafColumns: TableLeafColumn[];
-  columnIdMap: Map<string, number>;
-  inlineStyle?: CellStyleDefinition;
-  variables: VariableScope;
-}
-
-function writeDataRows(
-  rows: Record<string, unknown>[],
-  firstDataIndex: number,
-  allRendered: RenderedDataRow[],
-  groupRendered: RenderedDataRow[] | undefined,
-  startRow: number,
-  opts: DataRowsOptions,
-): number {
-  let row = startRow;
-
-  for (const [offset, rowData] of rows.entries()) {
-    const dataIndex = firstDataIndex + offset;
-    const formulaCtx = createTableRowFormulaContext(
-      opts.columnIdMap,
-      row,
-      1,
-      opts.context.registry,
-      opts.context.sheet.id,
-    );
-    const bandStyle = dataIndex % 2 === 0 ? opts.block.oddRowStyle : opts.block.evenRowStyle;
-
-    for (const [colOffset, col] of opts.leafColumns.entries()) {
-      const rawValue = resolveTableCellValue(rowData, col);
-      assertTableCellValue(rawValue);
-      const compiled = compileCellContent(interpolateCellValue(rawValue, opts.variables), formulaCtx);
-
-      opts.writer.addCell({
-        row,
-        column: 1 + colOffset,
-        ...compiled,
-        style: resolveStyle(
-          col.bodyStyle ?? col.style ?? bandStyle ?? opts.block.bodyStyle,
-          col.styleResolver?.(compiled.value, rowData, dataIndex),
-          opts.context,
-          `table column "${String(col.id ?? col.title)}"`,
-        ),
-        inlineStyle: opts.inlineStyle,
-      });
-    }
-
-    if (opts.block.bodyRowHeight !== undefined) {
-      opts.writer.setRowHeight({ row, height: opts.block.bodyRowHeight });
-    }
-
-    if (opts.block.rowHidden?.(rowData, dataIndex) === true) {
-      opts.writer.setRowHidden({ row, hidden: true });
-    }
-
-    const rendered: RenderedDataRow = { data: rowData, row };
-    groupRendered?.push(rendered);
-    allRendered.push(rendered);
-    row++;
-  }
-
-  return row;
-}
-
-interface SectionRowOptions {
-  allDataRows: Record<string, unknown>[];
-  allRendered: RenderedDataRow[];
-  currentRendered: RenderedDataRow[];
-  dataIndex: number;
-  row: number;
-  tableWidth: number;
-  columnIdMap: Map<string, number>;
-  inlineStyle?: CellStyleDefinition;
-  variables: VariableScope;
-  context: CompileContext;
-  writer: SheetWriter;
-}
-
 interface SectionCellPlacement {
-  cell: TableSectionRow['cells'][number];
+  cell: TableSectionCell;
   cellIndex: number;
   columnOffset: number;
   colSpan: number;
 }
 
-function writeSectionRow(sectionRow: TableSectionRow, opts: SectionRowOptions): number {
-  const { row, context, writer } = opts;
-  const occupied = new Set<number>();
-  const placements: SectionCellPlacement[] = [];
+class TableBlockCompiler {
+  private readonly variables = blockVariables(this.context, this.block);
+  private readonly headerDepth = calculateTableHeaderDepth(this.block.columns);
+  private readonly leafColumns = flattenColumns(this.block.columns);
+  private readonly columnIdMap = createTableColumnIdMap(this.leafColumns);
+  private readonly tableWidth = this.leafColumns.length;
+  private readonly inlineStyle = createTableInlineStyle(this.block.border);
+  private readonly footerRows = resolveFooterRows(this.block, this.leafColumns);
 
-  if (sectionRow.height !== undefined) writer.setRowHeight({ row, height: sectionRow.height });
-  if (sectionRow.hidden !== undefined) writer.setRowHidden({ row, hidden: sectionRow.hidden });
+  /**
+   * Tracks all rendered data rows across groups for footer section formulas
+   * (scope: 'allRows'). Built incrementally during writeDataRows.
+   */
+  private readonly allRendered: RenderedDataRow[] = [];
 
-  for (const [cellIndex, cell] of sectionRow.cells.entries()) {
-    const colOffset = resolveSectionCellColumnOffset(cell, cellIndex, opts.columnIdMap, occupied);
-    const colSpan = resolveSectionCellColSpan(cell, colOffset, opts.tableWidth);
+  constructor(
+    private readonly block: Extract<Block, { type: 'table' | 'table-groups' }>,
+    private readonly context: CompileContext,
+    private readonly writer: SheetWriter,
+  ) {}
 
-    if (cell.id) {
-      context.registry.register(context.sheet.id, context.sheet.name, cell.id, row, 1 + colOffset);
+  compile(startRow: number): number {
+    let row = this.writeHeader(startRow);
+
+    if (this.block.type === 'table') {
+      row = this.writeDataRows(this.block.data as Record<string, unknown>[], 0, undefined, row);
+    } else {
+      row = this.writeGroups(row);
     }
 
-    for (let o = colOffset; o < colOffset + colSpan; o++) {
-      if (occupied.has(o)) throw new CompileError('Table section row cells must not overlap.');
-      occupied.add(o);
-    }
-
-    placements.push({ cell, cellIndex, columnOffset: colOffset, colSpan });
+    return this.writeFooterRows(row);
   }
 
-  const formulaCtx = createTableSectionFormulaContext(
-    opts.columnIdMap,
-    opts.currentRendered,
-    opts.allRendered,
-    row,
-    1,
-    context.registry,
-    context.sheet.id,
-  );
+  private writeHeader(startRow: number): number {
+    for (const [offset, height] of (this.block.headerRowHeights ?? []).entries()) {
+      this.writer.setRowHeight({ row: startRow + offset, height });
+    }
 
-  for (const { cell, cellIndex, columnOffset, colSpan } of placements) {
-    const rawValue = resolveSectionCellValue(cell, {
-      rows: opts.currentRendered.map((r) => r.data),
-      allRows: opts.allDataRows,
-      dataIndex: opts.dataIndex,
-      rowIndex: row,
-    });
-
-    assertTableCellValue(rawValue);
-    const compiled = compileCellContent(interpolateCellValue(rawValue, opts.variables), formulaCtx);
-
-    writer.addCell({
-      row,
-      column: 1 + columnOffset,
-      ...compiled,
-      style: resolveStyle(
-        cell.style ?? sectionRow.style,
-        cell.styleResolver?.(compiled.value),
-        context,
-        `table section cell ${cellIndex + 1}`,
-      ),
-      inlineStyle: opts.inlineStyle,
-    });
-
-    if (colSpan > 1) {
-      writer.addMerge({
-        startRow: row,
-        startColumn: 1 + columnOffset,
-        endRow: row,
-        endColumn: 1 + columnOffset + colSpan - 1,
+    for (const hCell of buildHeaderMatrix(this.block.columns, this.headerDepth)) {
+      this.writer.addCell({
+        row: startRow + hCell.rowOffset,
+        column: 1 + hCell.columnOffset,
+        value: interpolateVariables(hCell.title, this.variables),
+        style: hCell.style ?? this.block.headerStyle,
+        inlineStyle: this.inlineStyle,
       });
+
+      if (hCell.rowSpan > 1 || hCell.colSpan > 1) {
+        this.writer.addMerge({
+          startRow: startRow + hCell.rowOffset,
+          startColumn: 1 + hCell.columnOffset,
+          endRow: startRow + hCell.rowOffset + hCell.rowSpan - 1,
+          endColumn: 1 + hCell.columnOffset + hCell.colSpan - 1,
+        });
+      }
     }
+
+    for (const [offset, col] of this.leafColumns.entries()) {
+      if (col.width !== undefined) this.writer.setColumnWidth({ column: 1 + offset, width: col.width });
+      if (col.hidden !== undefined) this.writer.setColumnHidden({ column: 1 + offset, hidden: col.hidden });
+    }
+
+    return startRow + this.headerDepth;
   }
 
-  // Fill remaining cells với sectionRow.style nếu có
-  if (sectionRow.style) {
-    for (let o = 0; o < opts.tableWidth; o++) {
+  private writeGroups(startRow: number): number {
+    let row = startRow;
+    let dataIndex = 0;
+    const block = this.block as Extract<Block, { type: 'table-groups' }>;
+
+    for (const group of block.groups as TableGroup[]) {
+      const groupRendered: RenderedDataRow[] = [];
+
+      for (const sectionRow of group.headerRows ?? []) {
+        row = this.writeSectionRow(sectionRow, groupRendered, dataIndex, row);
+      }
+
+      row = this.writeDataRows(group.data as Record<string, unknown>[], dataIndex, groupRendered, row);
+
+      for (const sectionRow of group.footerRows ?? []) {
+        row = this.writeSectionRow(sectionRow, groupRendered, dataIndex + group.data.length, row);
+      }
+
+      dataIndex += group.data.length;
+    }
+
+    return row;
+  }
+
+  private writeFooterRows(startRow: number): number {
+    let row = startRow;
+
+    for (const footerRow of this.footerRows) {
+      row = this.writeSectionRow(
+        { style: footerRow.style, height: footerRow.height, cells: footerRow.cells },
+        this.allRendered,
+        this.allRendered.length,
+        row,
+      );
+    }
+
+    return row;
+  }
+
+  private writeDataRows(
+    rows: Record<string, unknown>[],
+    firstDataIndex: number,
+    groupRendered: RenderedDataRow[] | undefined,
+    startRow: number,
+  ): number {
+    let row = startRow;
+
+    for (const [offset, rowData] of rows.entries()) {
+      const dataIndex = firstDataIndex + offset;
+      const formulaCtx = this.createFormulaContext(row);
+      const bandStyle = dataIndex % 2 === 0 ? this.block.oddRowStyle : this.block.evenRowStyle;
+
+      for (const [colOffset, col] of this.leafColumns.entries()) {
+        const rawValue = resolveTableCellValue(rowData, col);
+        assertTableCellValue(rawValue);
+        const compiled = compileCellContent(interpolateCellValue(rawValue, this.variables), formulaCtx);
+
+        this.writer.addCell({
+          row,
+          column: 1 + colOffset,
+          ...compiled,
+          style: resolveStyle(
+            col.bodyStyle ?? col.style ?? bandStyle ?? this.block.bodyStyle,
+            col.styleResolver?.(compiled.value, rowData, dataIndex),
+            this.context,
+            `table column "${String(col.id ?? col.title)}"`,
+          ),
+          inlineStyle: this.inlineStyle,
+        });
+      }
+
+      if (this.block.bodyRowHeight !== undefined) {
+        this.writer.setRowHeight({ row, height: this.block.bodyRowHeight });
+      }
+
+      if (this.block.rowHidden?.(rowData, dataIndex) === true) {
+        this.writer.setRowHidden({ row, hidden: true });
+      }
+
+      const rendered: RenderedDataRow = { data: rowData, row };
+      groupRendered?.push(rendered);
+      this.allRendered.push(rendered);
+      row++;
+    }
+
+    return row;
+  }
+
+  private writeSectionRow(
+    sectionRow: TableSectionRow,
+    currentRendered: RenderedDataRow[],
+    dataIndex: number,
+    row: number,
+  ): number {
+    const occupied = new Set<number>();
+    const placements = this.createSectionCellPlacements(sectionRow, occupied, row);
+    const formulaCtx = this.createFormulaContext(row, {
+      currentRows: currentRendered,
+      allRows: this.allRendered,
+    });
+
+    if (sectionRow.height !== undefined) this.writer.setRowHeight({ row, height: sectionRow.height });
+    if (sectionRow.hidden !== undefined) this.writer.setRowHidden({ row, hidden: sectionRow.hidden });
+
+    for (const { cell, cellIndex, columnOffset, colSpan } of placements) {
+      const rawValue = resolveSectionCellValue(cell, {
+        rows: currentRendered.map((r) => r.data),
+        allRows: this.allRendered.map((r) => r.data),
+        dataIndex,
+        rowIndex: row,
+      });
+
+      assertTableCellValue(rawValue);
+      const compiled = compileCellContent(interpolateCellValue(rawValue, this.variables), formulaCtx);
+
+      this.writer.addCell({
+        row,
+        column: 1 + columnOffset,
+        ...compiled,
+        style: resolveStyle(
+          cell.style ?? sectionRow.style,
+          cell.styleResolver?.(compiled.value),
+          this.context,
+          `table section cell ${cellIndex + 1}`,
+        ),
+        inlineStyle: this.inlineStyle,
+      });
+
+      if (colSpan > 1) {
+        this.writer.addMerge({
+          startRow: row,
+          startColumn: 1 + columnOffset,
+          endRow: row,
+          endColumn: 1 + columnOffset + colSpan - 1,
+        });
+      }
+    }
+
+    this.fillSectionRowStyle(sectionRow, occupied, row);
+    return row + 1;
+  }
+
+  private createSectionCellPlacements(
+    sectionRow: TableSectionRow,
+    occupied: Set<number>,
+    row: number,
+  ): SectionCellPlacement[] {
+    const placements: SectionCellPlacement[] = [];
+
+    for (const [cellIndex, cell] of sectionRow.cells.entries()) {
+      const colOffset = resolveSectionCellColumnOffset(cell, cellIndex, this.columnIdMap, occupied);
+      const colSpan = resolveSectionCellColSpan(cell, colOffset, this.tableWidth);
+
+      if (cell.id) {
+        this.context.registry.register(this.context.sheet.id, this.context.sheet.name, cell.id, row, 1 + colOffset);
+      }
+
+      for (let o = colOffset; o < colOffset + colSpan; o++) {
+        if (occupied.has(o)) throw new CompileError('Table section row cells must not overlap.');
+        occupied.add(o);
+      }
+
+      placements.push({ cell, cellIndex, columnOffset: colOffset, colSpan });
+    }
+
+    return placements;
+  }
+
+  private createFormulaContext(row: number, scopedRows?: Record<'currentRows' | 'allRows', RenderedDataRow[]>) {
+    return createTableFormulaContext({
+      columnIdMap: this.columnIdMap,
+      row,
+      firstColumn: 1,
+      registry: this.context.registry,
+      currentSheetId: this.context.sheet.id,
+      scopedRows,
+    });
+  }
+
+  private fillSectionRowStyle(sectionRow: TableSectionRow, occupied: Set<number>, row: number): void {
+    if (!sectionRow.style) return;
+
+    for (let o = 0; o < this.tableWidth; o++) {
       if (!occupied.has(o)) {
-        writer.addCell({ row, column: 1 + o, value: null, style: sectionRow.style, inlineStyle: opts.inlineStyle });
+        this.writer.addCell({
+          row,
+          column: 1 + o,
+          value: null,
+          style: sectionRow.style,
+          inlineStyle: this.inlineStyle,
+        });
       }
     }
   }
-
-  return row + 1;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -544,11 +511,9 @@ function resolveStyle(
 
   if (typeof dynamicStyle === 'string') {
     const styles = context.workbook.styles;
-
     if (!styles || !Object.prototype.hasOwnProperty.call(styles, dynamicStyle)) {
       throw new ReportEngineError(`${label} styleResolver returned unknown style "${dynamicStyle}".`);
     }
-
     return dynamicStyle;
   }
 

@@ -8,7 +8,7 @@ import ExcelJS from 'exceljs';
 import {
   FormulaError,
   ValidationError,
-  compileWorkbookToRenderPlan,
+  compileWorkbook,
   renderWorkbook,
   type WorkbookDefinition,
 } from '../src';
@@ -23,7 +23,7 @@ async function main(): Promise<void> {
 
 function testValidationErrorClass(): void {
   assert.throws(
-    () => compileWorkbookToRenderPlan({ sheets: [] } as unknown as WorkbookDefinition),
+    () => compileWorkbook({ sheets: [] } as unknown as WorkbookDefinition),
     (error) => error instanceof ValidationError && error.message.includes('at least one sheet'),
   );
 }
@@ -31,7 +31,7 @@ function testValidationErrorClass(): void {
 function testFormulaErrorClass(): void {
   assert.throws(
     () =>
-      compileWorkbookToRenderPlan({
+      compileWorkbook({
         sheets: [
           {
             id: 'sheet',

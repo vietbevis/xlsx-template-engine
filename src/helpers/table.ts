@@ -5,10 +5,10 @@ import type {
   CellContent,
   CellStyleDefinition,
   TableBorderDefinition,
+  TableColumnNode,
   TableLeafColumn,
   TableSectionCell,
   TableSectionCellContext,
-  TableColumnNode,
 } from '../types';
 
 export interface HeaderMatrixCell {
@@ -32,7 +32,6 @@ export function calculateTableHeaderDepth(columns: readonly TableColumnNode[]): 
       if (column.children?.length) {
         return (column.childrenRowOffset ?? 1) + calculateTableHeaderDepth(column.children);
       }
-
       return 1;
     }),
   );
@@ -53,29 +52,14 @@ export function createTableColumnIdMap(columns: readonly TableLeafColumn[]): Map
   const idMap = new Map<string, number>();
 
   for (const [columnOffset, column] of columns.entries()) {
-    if (!column.id) {
-      continue;
-    }
+    if (!column.id) continue;
 
     const key = String(column.id);
-    if (idMap.has(key)) {
-      throw new ReportEngineError(`Duplicate formula cell id "${key}".`);
-    }
-
+    if (idMap.has(key)) throw new ReportEngineError(`Duplicate formula cell id "${key}".`);
     idMap.set(key, columnOffset);
   }
 
   return idMap;
-}
-
-export function collectTableDataRows(
-  block: Extract<Block, { type: 'table' | 'table-groups' }>,
-): Record<string, unknown>[] {
-  if (block.type === 'table') {
-    return [...block.data] as Record<string, unknown>[];
-  }
-
-  return block.groups.flatMap((group) => group.data) as Record<string, unknown>[];
 }
 
 export function resolveSectionCellColumnOffset(
@@ -84,26 +68,18 @@ export function resolveSectionCellColumnOffset(
   tableColumnIdMap: Map<string, number>,
   occupiedColumns: Set<number>,
 ): number {
-  if (cell.column !== undefined) {
-    return cell.column - 1;
-  }
+  if (cell.column !== undefined) return cell.column - 1;
 
   if (cell.columnId !== undefined) {
     const offset = tableColumnIdMap.get(cell.columnId);
-
     if (offset === undefined) {
       throw new ReportEngineError(`Table section row references unknown columnId "${cell.columnId}".`);
     }
-
     return offset;
   }
 
   let offset = cellIndex === 0 ? 0 : Math.max(...occupiedColumns) + 1;
-
-  while (occupiedColumns.has(offset)) {
-    offset += 1;
-  }
-
+  while (occupiedColumns.has(offset)) offset++;
   return offset;
 }
 
@@ -118,34 +94,19 @@ export function resolveSectionCellColSpan(cell: TableSectionCell, columnOffset: 
 }
 
 export function resolveSectionCellValue(cell: TableSectionCell, context: TableSectionCellContext): unknown {
-  if (typeof cell.value === 'function') {
-    return cell.value(context);
-  }
-
+  if (typeof cell.value === 'function') return cell.value(context);
   return cell.value ?? null;
 }
 
 export function createTableInlineStyle(border: TableBorderDefinition | undefined): CellStyleDefinition | undefined {
-  if (!border) {
-    return undefined;
-  }
-
-  return {
-    border: typeof border === 'string' ? createAllSidesBorder(border) : border,
-  };
+  if (!border) return undefined;
+  return { border: typeof border === 'string' ? createAllSidesBorder(border) : border };
 }
 
 export function createSummaryFormula(columnId: string, summary: NonNullable<TableLeafColumn['summary']>): CellContent {
-  if (summary && typeof summary === 'object') {
-    return summary;
-  }
+  if (summary && typeof summary === 'object') return summary;
 
-  const range = {
-    type: 'range' as const,
-    startId: columnId,
-    endId: columnId,
-    scope: 'allRows' as const,
-  };
+  const range = { type: 'range' as const, startId: columnId, endId: columnId, scope: 'allRows' as const };
 
   switch (summary) {
     case 'sum':
@@ -158,6 +119,8 @@ export function createSummaryFormula(columnId: string, summary: NonNullable<Tabl
       return assertNeverSummary(summary);
   }
 }
+
+// ─── Private helpers ──────────────────────────────────────────────────────────
 
 function appendHeaderCell(
   cells: HeaderMatrixCell[],
@@ -181,12 +144,9 @@ function appendHeaderCell(
     colSpan,
   });
 
-  if (!isParent) {
-    return 1;
-  }
+  if (!isParent) return 1;
 
   let childColumnOffset = columnOffset;
-
   for (const childColumn of childColumns) {
     childColumnOffset += appendHeaderCell(
       cells,
@@ -208,14 +168,16 @@ function countLeafColumns(columns: readonly TableColumnNode[]): number {
 }
 
 function createAllSidesBorder(style: ExcelJS.BorderStyle): Partial<ExcelJS.Borders> {
-  return {
-    top: { style },
-    right: { style },
-    bottom: { style },
-    left: { style },
-  };
+  return { top: { style }, right: { style }, bottom: { style }, left: { style } };
 }
 
 function assertNeverSummary(value: never): never {
   throw new ReportEngineError(`Unsupported table summary "${String(value)}".`);
+}
+
+export function collectTableDataRows(
+  block: Extract<Block, { type: 'table' | 'table-groups' }>,
+): Record<string, unknown>[] {
+  if (block.type === 'table') return [...block.data] as Record<string, unknown>[];
+  return block.groups.flatMap((group) => group.data) as Record<string, unknown>[];
 }

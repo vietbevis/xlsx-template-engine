@@ -5,8 +5,8 @@ import type {
   FormulaDefinition,
   FormulaRangeReference,
   FormulaRangeScope,
+  WriterCell,
 } from './types';
-import type { RenderCell } from './render-plan';
 
 export interface FormulaCompileContext {
   resolveCellId(id: string, sheetId?: string): string;
@@ -16,7 +16,7 @@ export interface FormulaCompileContext {
 export function compileCellContent(
   content: CellContent | undefined,
   context?: FormulaCompileContext,
-): Pick<RenderCell, 'value' | 'formula'> {
+): Pick<WriterCell, 'value' | 'formula'> {
   if (content === undefined) {
     return {};
   }

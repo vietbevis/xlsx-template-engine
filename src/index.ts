@@ -52,27 +52,21 @@ export type {
   TypedFormulaDefinition,
   WorkbookDefinition,
   WorkbookMetadata,
+  WriterCell,
+  WriterColumnVisibility,
+  WriterColumnWidth,
+  WriterLink,
+  WriterMergeRange,
+  WriterRowHeight,
+  WriterRowVisibility,
+  WriterSheetView,
 } from './types';
 
-export { compileWorkbookToRenderPlan } from './compile';
+export { compileWorkbook } from './compile';
 export { isFormulaDefinition } from './formula-engine';
 
 export type { CompileWorkbookOptions } from './compile';
 export type { RenderContext, VariableScope } from './variable-engine';
-
-export type {
-  RenderCell,
-  RenderColumnVisibility,
-  RenderColumnWidth,
-  RenderLink,
-  RenderMergeRange,
-  RenderPlan,
-  RenderPlanSheet,
-  RenderRow,
-  RenderRowHeight,
-  RenderRowVisibility,
-  RenderSheetView,
-} from './render-plan';
 
 export { renderWorkbook } from './renderer';
 

@@ -19,8 +19,8 @@ export function markGridOccupied(
   rowSpan: number,
   colSpan: number,
 ): void {
-  for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
-    for (let col = columnOffset; col < columnOffset + colSpan; col += 1) {
+  for (let row = rowOffset; row < rowOffset + rowSpan; row++) {
+    for (let col = columnOffset; col < columnOffset + colSpan; col++) {
       occupied.add(gridOccupancyKey(row, col));
     }
   }
@@ -33,8 +33,8 @@ export function assertGridCellDoesNotOverlap(
   rowSpan: number,
   colSpan: number,
 ): void {
-  for (let row = rowOffset; row < rowOffset + rowSpan; row += 1) {
-    for (let column = columnOffset; column < columnOffset + colSpan; column += 1) {
+  for (let row = rowOffset; row < rowOffset + rowSpan; row++) {
+    for (let column = columnOffset; column < columnOffset + colSpan; column++) {
       if (occupied.has(gridOccupancyKey(row, column))) {
         throw new ReportEngineError('Grid cell merge ranges must not overlap.');
       }

@@ -3,8 +3,7 @@ import { compileBlock } from './block-compiler';
 import { CompileError, FormulaError, ReportEngineError, ValidationError } from './errors';
 import { cloneStylePart } from './helpers/style';
 import { flattenColumns } from './helpers/table';
-import type { RenderPlan } from './render-plan';
-import { SheetWriter } from './sheet-writer';
+import { ExcelJsWorkbook } from './exceljs-workbook';
 import type { Block, GridRow, SheetDefinition, WorkbookDefinition } from './types';
 import { validateWorkbookDefinition } from './validation';
 import type { RenderContext } from './variable-engine';
@@ -18,29 +17,31 @@ export interface CompileWorkbookOptions {
 }
 
 /**
- * Compile `WorkbookDefinition` → `RenderPlan` trong **single-pass**.
- *
- * Loại bỏ hoàn toàn:
- * - workbook-level column-count pre-pass (sheet width is measured per sheet)
- * - `collectWorkbookFormulaIds` pre-pass (thay bằng AddressRegistry ghi inline)
- * - `RenderPlanBuilder` (thay bằng `SheetWriter` per-sheet)
- * - `LayoutCursor` mutable (thay bằng `row` number thuần)
+ * Compile `WorkbookDefinition` → `ExcelJsWorkbook` in a single pass.
+ * Blocks are compiled directly into ExcelJS worksheets — no intermediate
+ * representation.
  */
-export function compileWorkbookToRenderPlan(
-  workbook: WorkbookDefinition,
-  options: CompileWorkbookOptions = {},
-): RenderPlan {
+export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWorkbookOptions = {}): ExcelJsWorkbook {
   validateWorkbookDefinition(workbook);
 
   const registry = new AddressRegistry();
   const workbookContext = { ...(workbook.context ?? {}), ...(options.context ?? {}) };
 
-  const sheets = workbook.sheets.map((sheet) => {
-    const writer = new SheetWriter(
-      sheet.id,
+  const excelWorkbook = new ExcelJsWorkbook(workbook.metadata?.author);
+
+  const styleConfig = {
+    defaultStyle: workbook.defaultStyle
+      ? (cloneStylePart(workbook.defaultStyle) as typeof workbook.defaultStyle)
+      : undefined,
+    styles: workbook.styles ? cloneStyles(workbook.styles) : undefined,
+  };
+
+  for (const sheet of workbook.sheets) {
+    const writer = excelWorkbook.createSheetWriter(
       sheet.name,
+      styleConfig,
       sheet.freezePane
-        ? [{ state: 'frozen', xSplit: sheet.freezePane.columns ?? 0, ySplit: sheet.freezePane.rows ?? 0 }]
+        ? [{ state: 'frozen' as const, xSplit: sheet.freezePane.columns ?? 0, ySplit: sheet.freezePane.rows ?? 0 }]
         : undefined,
     );
 
@@ -62,37 +63,23 @@ export function compileWorkbookToRenderPlan(
       }
     }
 
-    return writer.finish();
-  });
+    writer.finish();
+  }
 
-  return {
-    metadata: workbook.metadata
-      ? {
-          ...workbook.metadata,
-          keywords: workbook.metadata.keywords ? [...workbook.metadata.keywords] : undefined,
-        }
-      : undefined,
-    defaultStyle: workbook.defaultStyle
-      ? (cloneStylePart(workbook.defaultStyle) as typeof workbook.defaultStyle)
-      : undefined,
-    styles: workbook.styles ? resolveStyles(workbook.styles) : undefined,
-    sheets,
-  };
+  return excelWorkbook;
 }
 
 function normalizeCompileError(error: unknown, sheetId: string, blockIndex: number): Error {
   if (error instanceof ValidationError || error instanceof FormulaError || error instanceof CompileError) {
     return error;
   }
-
   if (error instanceof ReportEngineError) {
     return new CompileError(error.message, { sheetId, blockIndex });
   }
-
   return error instanceof Error ? error : new CompileError(String(error), { sheetId, blockIndex });
 }
 
-function resolveStyles(styles: NonNullable<WorkbookDefinition['styles']>): NonNullable<WorkbookDefinition['styles']> {
+function cloneStyles(styles: NonNullable<WorkbookDefinition['styles']>): NonNullable<WorkbookDefinition['styles']> {
   return Object.fromEntries(
     Object.entries(styles).map(([name, style]) => [name, cloneStylePart(style) as typeof style]),
   );
@@ -114,6 +101,9 @@ function measureBlockColumnCount(block: Block): number {
       return Math.max(1, ...block.rows.map(measureGridRowColumnCount));
     case 'table':
     case 'table-groups':
+      // flattenColumns is also called inside TableBlockCompiler, but that
+      // happens later per-row. Here we only traverse the column tree once
+      // to get the width — cheap compared to data iteration.
       return flattenColumns(block.columns).length;
     default:
       return assertNeverBlock(block);
