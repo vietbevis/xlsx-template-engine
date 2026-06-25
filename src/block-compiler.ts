@@ -1,6 +1,10 @@
+import type ExcelJS from 'exceljs';
+import { AddressRegistry } from './address-registry';
 import { CompileError, ReportEngineError } from './errors';
 import { createGridFormulaContext, createTableFormulaContext, type RenderedDataRow } from './formula-context';
 import { compileCellContent, isFormulaDefinition } from './formula-engine';
+import { writeCell, writeMerge } from './helpers/exceljs';
+import { mergeCellStyles } from './helpers/style';
 import {
   assertGridCellDoesNotOverlap,
   buildHeaderMatrix,
@@ -16,14 +20,13 @@ import {
   resolveSectionCellColumnOffset,
   resolveSectionCellValue,
 } from './helpers/utils';
-import type ExcelJS from 'exceljs';
-import { writeCell, writeMerge } from './helpers/exceljs';
-import { mergeCellStyles } from './helpers/style';
 import type {
   Block,
   CellContent,
+  CellStyleDefinition,
   GridCell,
   SheetDefinition,
+  StyleRegistry,
   StyleValue,
   TableFooterRow,
   TableGroup,
@@ -31,11 +34,8 @@ import type {
   TableSectionCell,
   TableSectionRow,
   WorkbookDefinition,
-  CellStyleDefinition,
-  StyleRegistry,
 } from './types';
 import { interpolateCellValue, interpolateVariables, type VariableScope } from './variable-engine';
-import { AddressRegistry } from './address-registry';
 
 export interface CompileContext {
   readonly workbook: WorkbookDefinition;
@@ -54,62 +54,13 @@ export interface CompileContext {
 
 export function compileBlock(block: Block, context: CompileContext, startRow: number): number {
   switch (block.type) {
-    case 'title':
-    case 'text':
-      return compileTextBlock(block, context, startRow);
-    case 'spacer':
-      return startRow + (block.rows ?? 1);
-    case 'divider':
-      return compileDividerBlock(block, context, startRow);
     case 'grid':
       return compileGridBlock(block, context, startRow);
     case 'table':
-    case 'table-groups':
       return compileTableBlock(block, context, startRow);
     default:
       throw new ReportEngineError(`Unknown block type "${(block as Block).type}" in sheet "${context.sheet.id}".`);
   }
-}
-
-// ─── Text / Title ─────────────────────────────────────────────────────────────
-
-function compileTextBlock(
-  block: Extract<Block, { type: 'title' | 'text' }>,
-  context: CompileContext,
-  row: number,
-): number {
-  const variables = blockVariables(context, block);
-  const colSpan = resolveColSpan(block.colSpan, 0, context.sheetColumnCount);
-
-  const style = resolveStyle(block.style, undefined, context, 'text block');
-  writeCell(context.worksheet, row, 1, interpolateVariables(block.text, variables), style);
-
-  if (colSpan > 1) {
-    writeMerge(context.worksheet, row, 1, row, colSpan);
-  }
-
-  if (block.height !== undefined) {
-    context.worksheet.getRow(row).height = block.height;
-  }
-
-  return row + 1;
-}
-
-// ─── Divider ──────────────────────────────────────────────────────────────────
-
-function compileDividerBlock(
-  block: Extract<Block, { type: 'divider' }>,
-  context: CompileContext,
-  startRow: number,
-): number {
-  const rows = block.rows ?? 1;
-  const style = resolveStyle(block.style, undefined, context, 'divider block');
-
-  for (let offset = 0; offset < rows; offset++) {
-    writeCell(context.worksheet, startRow + offset, 1, '', style);
-  }
-
-  return startRow + rows;
 }
 
 // ─── Grid ─────────────────────────────────────────────────────────────────────
@@ -192,7 +143,7 @@ function compileGridBlock(block: Extract<Block, { type: 'grid' }>, context: Comp
 // ─── Table ────────────────────────────────────────────────────────────────────
 
 function compileTableBlock(
-  block: Extract<Block, { type: 'table' | 'table-groups' }>,
+  block: Extract<Block, { type: 'table' }>,
   context: CompileContext,
   startRow: number,
 ): number {
@@ -224,16 +175,16 @@ class TableBlockCompiler {
   private readonly allRendered: RenderedDataRow[] = [];
 
   constructor(
-    private readonly block: Extract<Block, { type: 'table' | 'table-groups' }>,
+    private readonly block: Extract<Block, { type: 'table' }>,
     private readonly context: CompileContext,
   ) {}
 
   compile(startRow: number): number {
     let row = this.writeHeader(startRow);
 
-    if (this.block.type === 'table') {
+    if (this.block.data) {
       row = this.writeDataRows(this.block.data as Record<string, unknown>[], 0, undefined, row);
-    } else {
+    } else if (this.block.groups) {
       row = this.writeGroups(row);
     }
 
@@ -288,9 +239,8 @@ class TableBlockCompiler {
   private writeGroups(startRow: number): number {
     let row = startRow;
     let dataIndex = 0;
-    const block = this.block as Extract<Block, { type: 'table-groups' }>;
 
-    for (const group of block.groups as TableGroup[]) {
+    for (const group of (this.block.groups ?? []) as TableGroup[]) {
       const groupRendered: RenderedDataRow[] = [];
 
       for (const sectionRow of group.headerRows ?? []) {
@@ -475,10 +425,7 @@ class TableBlockCompiler {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function resolveFooterRows(
-  block: Extract<Block, { type: 'table' | 'table-groups' }>,
-  leafColumns: TableLeafColumn[],
-): TableFooterRow[] {
+function resolveFooterRows(block: Extract<Block, { type: 'table' }>, leafColumns: TableLeafColumn[]): TableFooterRow[] {
   if (block.footerRows) return [...block.footerRows] as TableFooterRow[];
 
   const hasSummary = leafColumns.some((col) => col.summary !== undefined);

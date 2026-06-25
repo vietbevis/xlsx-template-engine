@@ -5,7 +5,7 @@ export type CellValue = Exclude<ExcelJS.CellValue, undefined>;
 export type CellContent = CellValue | FormulaDefinition;
 
 /** Column node lá (không có children) trong cây cột của table. */
-export type TableColumnNode = Extract<Block, { type: 'table' | 'table-groups' }>['columns'][number];
+export type TableColumnNode = Extract<Block, { type: 'table' }>['columns'][number];
 export type TableLeafColumn = TableColumnNode & { children?: undefined };
 
 export type FormulaDefinition = FormulaTemplateDefinition | RefFormulaDefinition | RangeFormulaDefinition;
@@ -73,35 +73,11 @@ export interface SheetFreezePane {
   columns?: number;
 }
 
-export type Block = TitleBlock | TextBlock | SpacerBlock | GridBlock | TableBlock | TableGroupsBlock | DividerBlock;
+export type Block = GridBlock | TableBlock;
 
 export interface BaseBlock {
   type: string;
   context?: Record<string, unknown>;
-}
-
-export interface TitleBlock extends BaseBlock, StyleReference {
-  type: 'title';
-  text: string;
-  height?: number;
-  colSpan?: number | 'remaining';
-}
-
-export interface TextBlock extends BaseBlock, StyleReference {
-  type: 'text';
-  text: string;
-  height?: number;
-  colSpan?: number | 'remaining';
-}
-
-export interface SpacerBlock extends BaseBlock {
-  type: 'spacer';
-  rows?: number;
-}
-
-export interface DividerBlock extends BaseBlock, StyleReference {
-  type: 'divider';
-  rows?: number;
 }
 
 export interface GridBlock extends BaseBlock {
@@ -140,12 +116,8 @@ export interface BaseTableBlock<Row = Record<string, unknown>> extends BaseBlock
 
 export interface TableBlock<Row = Record<string, unknown>> extends BaseTableBlock<Row> {
   type: 'table';
-  data: readonly Row[];
-}
-
-export interface TableGroupsBlock<Row = Record<string, unknown>> extends BaseTableBlock<Row> {
-  type: 'table-groups';
-  groups: readonly TableGroup<Row>[];
+  data?: readonly Row[];
+  groups?: readonly TableGroup<Row>[];
 }
 
 export interface TableGroup<Row = Record<string, unknown>> {

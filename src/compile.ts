@@ -89,19 +89,9 @@ function measureSheetColumnCount(sheet: SheetDefinition): number {
 
 function measureBlockColumnCount(block: Block): number {
   switch (block.type) {
-    case 'title':
-    case 'text':
-      return block.colSpan === 'remaining' ? 1 : (block.colSpan ?? 1);
-    case 'spacer':
-    case 'divider':
-      return 1;
     case 'grid':
       return Math.max(1, ...block.rows.map(measureGridRowColumnCount));
     case 'table':
-    case 'table-groups':
-      // flattenColumns is also called inside TableBlockCompiler, but that
-      // happens later per-row. Here we only traverse the column tree once
-      // to get the width — cheap compared to data iteration.
       return flattenColumns(block.columns).length;
     default:
       return assertNeverBlock(block);

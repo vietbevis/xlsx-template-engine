@@ -53,7 +53,7 @@ async function testSectionRowCanReferenceLaterCellId(): Promise<void> {
         name: 'Sheet',
         blocks: [
           {
-            type: 'table-groups',
+            type: 'table',
             columns: [
               { id: 'name', title: 'Name' },
               { id: 'amount', title: 'Amount' },

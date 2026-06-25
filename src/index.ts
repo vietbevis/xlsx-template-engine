@@ -7,7 +7,6 @@ export type {
   CellContent,
   CellStyleDefinition,
   CellValue,
-  DividerBlock,
   FormulaDefinition,
   FormulaExpression,
   FormulaRangeScope,
@@ -19,7 +18,6 @@ export type {
   RefFormulaDefinition,
   SheetDefinition,
   SheetFreezePane,
-  SpacerBlock,
   StyleReference,
   StyleRegistry,
   StyleValue,
@@ -28,13 +26,10 @@ export type {
   TableColumn,
   TableFooterRow,
   TableGroup,
-  TableGroupsBlock,
   TableSectionCell,
   TableSectionCellAccessor,
   TableSectionCellContext,
   TableSectionRow,
-  TextBlock,
-  TitleBlock,
   WorkbookDefinition,
   WorkbookMetadata,
 } from './types';
@@ -43,4 +38,5 @@ export type { CompileWorkbookOptions, WorkbookRenderer, WorkbookRenderOptions } 
 export type { RenderContext, VariableScope } from './variable-engine';
 
 export { compileWorkbook, renderWorkbook } from './compile';
+export { dividerBlock, spacerBlock, textBlock, titleBlock } from './factories';
 export { isFormulaDefinition } from './formula-engine';

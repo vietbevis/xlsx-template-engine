@@ -1,7 +1,7 @@
 import { z, type ZodIssue } from 'zod';
 import { ValidationError } from './errors';
 import { calculateTableHeaderDepth } from './helpers/table';
-import type { TableColumnNode, WorkbookDefinition } from './types';
+import type { WorkbookDefinition } from './types';
 
 const nonEmptyString = z.string().trim().min(1);
 const positiveNumber = z.number().positive();
@@ -151,57 +151,34 @@ const baseTableShape = {
 
 const blockSchema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal('title'),
-    text: z.string(),
-    height: positiveNumber.optional(),
-    colSpan: colSpanSchema.optional(),
-    style: styleValueSchema.optional(),
-    context: z.record(z.string(), z.unknown()).optional(),
-  }),
-  z.object({
-    type: z.literal('text'),
-    text: z.string(),
-    height: positiveNumber.optional(),
-    colSpan: colSpanSchema.optional(),
-    style: styleValueSchema.optional(),
-    context: z.record(z.string(), z.unknown()).optional(),
-  }),
-  z.object({
-    type: z.literal('spacer'),
-    rows: positiveInteger.optional(),
-    context: z.record(z.string(), z.unknown()).optional(),
-  }),
-  z.object({
-    type: z.literal('divider'),
-    rows: positiveInteger.optional(),
-    style: styleValueSchema.optional(),
-    context: z.record(z.string(), z.unknown()).optional(),
-  }),
-  z.object({
     type: z.literal('grid'),
     rows: z.array(gridRowSchema),
     context: z.record(z.string(), z.unknown()).optional(),
   }),
-  z.object({
-    type: z.literal('table'),
-    ...baseTableShape,
-    data: z.array(z.record(z.string(), z.unknown())),
-    context: z.record(z.string(), z.unknown()).optional(),
-  }),
-  z.object({
-    type: z.literal('table-groups'),
-    ...baseTableShape,
-    groups: z
-      .array(
-        z.object({
-          headerRows: z.array(tableSectionRowSchema).optional(),
-          data: z.array(z.record(z.string(), z.unknown())),
-          footerRows: z.array(tableSectionRowSchema).optional(),
-        }),
-      )
-      .nonempty(),
-    context: z.record(z.string(), z.unknown()).optional(),
-  }),
+  z
+    .object({
+      type: z.literal('table'),
+      ...baseTableShape,
+      data: z.array(z.record(z.string(), z.unknown())).optional(),
+      groups: z
+        .array(
+          z.object({
+            headerRows: z.array(tableSectionRowSchema).optional(),
+            data: z.array(z.record(z.string(), z.unknown())),
+            footerRows: z.array(tableSectionRowSchema).optional(),
+          }),
+        )
+        .optional(),
+      context: z.record(z.string(), z.unknown()).optional(),
+    })
+    .refine(
+      (val) => {
+        const hasData = val.data !== undefined;
+        const hasGroups = val.groups !== undefined;
+        return (hasData && !hasGroups) || (!hasData && hasGroups);
+      },
+      { message: "TableBlock must have exactly one of 'data' or 'groups'." },
+    ),
 ]);
 
 const workbookSchema = z.object({
@@ -282,17 +259,14 @@ function validateBlockSemantics(
 ): void {
   validateStyleReferences(block, createBlockPath(sheetId, block, blockIndex), styles);
 
-  if (block.type === 'table' || block.type === 'table-groups') {
+  if (block.type === 'table') {
     const label = createBlockPath(sheetId, block, blockIndex);
 
     if (block.headerRowHeights && block.headerRowHeights.length > calculateTableHeaderDepth(block.columns)) {
       throw new ValidationError(`${label} headerRowHeights must not exceed header row count.`);
     }
 
-    validateTableDataRows(
-      block.type === 'table' ? block.data : block.groups.flatMap((group) => group.data),
-      `${label} data`,
-    );
+    validateTableDataRows(block.data ? block.data : block.groups!.flatMap((group) => group.data), `${label} data`);
   }
 }
 
