@@ -21,29 +21,13 @@ export interface SheetWriterConfig {
   styles?: StyleRegistry;
 }
 
-interface StyledMergeCoverage {
-  startRow: number;
-  endRow: number;
-  startColumn: number;
-  endColumn: number;
-  style: CellStyleDefinition;
-}
-
 /**
  * Writer ghi trực tiếp vào `ExcelJS.Worksheet`.
  * Scoped theo sheet: mỗi sheet có một SheetWriter riêng.
  *
- * Merge style coverage (propagating border styles to all cells in a merge range)
- * is applied on `finish()` after all cells and merges have been written.
+ * Buffer-free: các thay đổi được ghi vào worksheet ngay lập tức.
  */
 export class SheetWriter {
-  private readonly merges: WriterMergeRange[] = [];
-  /**
-   * Track cells written to the master (top-left) position of each merge range
-   * so we can resolve their styles for merge coverage in `finish()`.
-   */
-  private readonly masterCells = new Map<string, WriterCell>();
-
   constructor(
     private readonly worksheet: ExcelJS.Worksheet,
     private readonly config: SheetWriterConfig = {},
@@ -53,20 +37,14 @@ export class SheetWriter {
     assertPositiveInteger(cell.row, 'cell row');
     assertPositiveInteger(cell.column, 'cell column');
 
-    // Track cell for potential merge style coverage lookup
-    this.masterCells.set(`${cell.row}:${cell.column}`, cell);
-
     const excelCell = this.worksheet.getRow(cell.row).getCell(cell.column);
 
-    // Set value or formula
     excelCell.value = cell.formula
       ? this.createFormulaValue(cell.formula, cell.formulaResult ?? cell.value)
       : (cell.value ?? null);
 
-    // Resolve and apply style
     const style = this.resolveCellStyle(cell);
     if (style) {
-      // ExcelJS does not deep-clone on assignment, so we clone once here.
       excelCell.style = cloneStylePart(style) as Partial<ExcelJS.Style>;
     }
   }
@@ -74,7 +52,25 @@ export class SheetWriter {
   addMerge(range: WriterMergeRange): void {
     const normalized = normalizeMergeRange(range);
     if (normalized.type === 'skip-single-cell') return;
-    this.merges.push(normalized.range);
+
+    const { startRow, startColumn, endRow, endColumn } = normalized.range;
+
+    this.worksheet.mergeCells(startRow, startColumn, endRow, endColumn);
+
+    const masterCell = this.worksheet.getCell(startRow, startColumn);
+    const style = masterCell.style;
+
+    // Apply the master cell's border style to the rest of the merged cells
+    if (style && style.border) {
+      for (let r = startRow; r <= endRow; r++) {
+        for (let c = startColumn; c <= endColumn; c++) {
+          if (r === startRow && c === startColumn) continue;
+          (this.worksheet.getCell(r, c) as ExcelJS.Cell).style = {
+            ...style,
+          } as Partial<ExcelJS.Style>;
+        }
+      }
+    }
   }
 
   setColumnWidth(width: WriterColumnWidth): void {
@@ -99,29 +95,6 @@ export class SheetWriter {
     this.worksheet.getRow(visibility.row).hidden = visibility.hidden;
   }
 
-  /**
-   * Finalize the sheet: apply all merges and propagate border styles to
-   * every cell within each merge range.
-   */
-  finish(): void {
-    // Apply merges
-    for (const merge of this.merges) {
-      this.worksheet.mergeCells(merge.startRow, merge.startColumn, merge.endRow, merge.endColumn);
-    }
-
-    // Build and apply styled merge coverage
-    const coverage = this.buildStyledMergeCoverage();
-    for (const merge of coverage) {
-      for (let row = merge.startRow; row <= merge.endRow; row++) {
-        for (let column = merge.startColumn; column <= merge.endColumn; column++) {
-          (this.worksheet.getCell(row, column) as ExcelJS.Cell).style = {
-            ...merge.style,
-          } as Partial<ExcelJS.Style>;
-        }
-      }
-    }
-  }
-
   // ─── Private helpers ──────────────────────────────────────────────────────────
 
   private createFormulaValue(formula: string, result: unknown): ExcelJS.CellValue {
@@ -142,26 +115,6 @@ export class SheetWriter {
     const registryStyle = this.config.styles?.[style];
     if (!registryStyle) throw new RenderError(`Unknown style "${style}".`);
     return registryStyle;
-  }
-
-  /**
-   * Build list of merge ranges that carry border styles.
-   * We look up the master cell (top-left) from the tracked masterCells map.
-   */
-  private buildStyledMergeCoverage(): StyledMergeCoverage[] {
-    const coverage: StyledMergeCoverage[] = [];
-
-    for (const merge of this.merges) {
-      const masterCell = this.masterCells.get(`${merge.startRow}:${merge.startColumn}`);
-      if (!masterCell) continue;
-
-      const style = this.resolveCellStyle(masterCell);
-      if (!style?.border) continue;
-
-      coverage.push({ ...merge, style });
-    }
-
-    return coverage;
   }
 }
 
@@ -194,12 +147,6 @@ function mergeStylePart<T extends Record<string, unknown>>(
 
 type NormalizedMergeRange = { type: 'skip-single-cell' } | { type: 'range'; range: WriterMergeRange };
 
-/**
- * Chuẩn hóa merge range:
- * - Validate tọa độ là số nguyên dương và end >= start.
- * - Nếu chỉ 1 ô → skip (không cần merge).
- * - Ngược lại → trả về range hợp lệ.
- */
 function normalizeMergeRange(range: WriterMergeRange): NormalizedMergeRange {
   assertPositiveInteger(range.startRow, 'Render plan merge start row');
   assertPositiveInteger(range.startColumn, 'Render plan merge start column');

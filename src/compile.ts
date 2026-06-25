@@ -4,7 +4,8 @@ import type { Writable } from 'stream';
 import { CompileError, FormulaError, ReportEngineError, ValidationError } from './errors';
 import { cloneStylePart } from './helpers/style';
 import { flattenColumns } from './helpers/table';
-import { ExcelJsWorkbook } from './exceljs-workbook';
+import ExcelJS from 'exceljs';
+import { SheetWriter } from './sheet-writer';
 import type { Block, GridRow, SheetDefinition, WorkbookDefinition } from './types';
 import { validateWorkbookDefinition } from './validation';
 import type { RenderContext } from './variable-engine';
@@ -18,17 +19,20 @@ export interface CompileWorkbookOptions {
 }
 
 /**
- * Compile `WorkbookDefinition` → `ExcelJsWorkbook` in a single pass.
+ * Compile `WorkbookDefinition` → `ExcelJS.Workbook` in a single pass.
  * Blocks are compiled directly into ExcelJS worksheets — no intermediate
  * representation.
  */
-export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWorkbookOptions = {}): ExcelJsWorkbook {
+export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWorkbookOptions = {}): ExcelJS.Workbook {
   validateWorkbookDefinition(workbook);
 
   const registry = new AddressRegistry();
   const workbookContext = { ...(workbook.context ?? {}), ...(options.context ?? {}) };
 
-  const excelWorkbook = new ExcelJsWorkbook(workbook.metadata?.author);
+  const excelWorkbook = new ExcelJS.Workbook();
+  if (workbook.metadata?.author) {
+    excelWorkbook.creator = workbook.metadata.author;
+  }
 
   const styleConfig = {
     defaultStyle: workbook.defaultStyle
@@ -38,13 +42,13 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
   };
 
   for (const sheet of workbook.sheets) {
-    const writer = excelWorkbook.createSheetWriter(
-      sheet.name,
-      styleConfig,
-      sheet.freezePane
+    const worksheet = excelWorkbook.addWorksheet(sheet.name, {
+      views: sheet.freezePane
         ? [{ state: 'frozen' as const, xSplit: sheet.freezePane.columns ?? 0, ySplit: sheet.freezePane.rows ?? 0 }]
         : undefined,
-    );
+    });
+
+    const writer = new SheetWriter(worksheet, styleConfig);
 
     const context = {
       workbook,
@@ -63,8 +67,6 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
         throw normalizeCompileError(error, sheet.id, blockIndex);
       }
     }
-
-    writer.finish();
   }
 
   return excelWorkbook;
@@ -125,6 +127,19 @@ export interface WorkbookRenderer {
   writeStream(stream: Writable): Promise<void>;
 }
 
-export function renderWorkbook(workbook: WorkbookDefinition, options: CompileWorkbookOptions = {}): ExcelJsWorkbook {
-  return compileWorkbook(workbook, options);
+export function renderWorkbook(workbook: WorkbookDefinition, options: CompileWorkbookOptions = {}): WorkbookRenderer {
+  const excelWorkbook = compileWorkbook(workbook, options);
+
+  return {
+    writeFile: async (filePath: string) => {
+      await excelWorkbook.xlsx.writeFile(filePath);
+    },
+    writeBuffer: async () => {
+      const buffer = await excelWorkbook.xlsx.writeBuffer();
+      return Buffer.from(buffer);
+    },
+    writeStream: async (stream: Writable) => {
+      await excelWorkbook.xlsx.write(stream);
+    },
+  };
 }
