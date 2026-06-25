@@ -1,5 +1,5 @@
-import { ReportEngineError } from './errors';
-import { createFormulaId, type CellAddress } from './formula-engine';
+import { CompileError } from './errors';
+import type { CellAddress } from './formula-engine';
 
 /**
  * Mutable registry tích lũy địa chỉ ô (row, column) theo id trong suốt
@@ -13,21 +13,20 @@ export class AddressRegistry {
   private readonly map = new Map<string, CellAddress>();
 
   register(sheetId: string, sheetName: string, id: string, row: number, column: number): void {
-    const key = createFormulaId(sheetId, id);
+    const key = createAddressKey(sheetId, id);
 
     if (this.map.has(key)) {
-      throw new ReportEngineError(`Duplicate formula cell id "${id}" in sheet "${sheetId}".`);
+      throw new CompileError(`Duplicate formula cell id "${id}" in sheet "${sheetId}".`, { sheetId, id });
     }
 
     this.map.set(key, { row, column, sheetId, sheetName });
   }
 
   resolve(id: string, sheetId?: string): CellAddress | undefined {
-    return this.map.get(createFormulaId(sheetId, id));
+    return this.map.get(createAddressKey(sheetId, id));
   }
+}
 
-  /** Trả về snapshot bất biến để truyền vào FormulaCompileContext. */
-  snapshot(): ReadonlyMap<string, CellAddress> {
-    return this.map;
-  }
+function createAddressKey(sheetId: string | undefined, id: string): string {
+  return sheetId ? `${sheetId}:${id}` : id;
 }

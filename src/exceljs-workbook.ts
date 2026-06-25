@@ -1,7 +1,7 @@
 import ExcelJS from 'exceljs';
 import type { Writable } from 'stream';
 import type { RenderCell, RenderPlan, RenderPlanSheet } from './render-plan';
-import { ReportEngineError } from './errors';
+import { RenderError, ReportEngineError } from './errors';
 import type { CellStyleDefinition, StyleValue } from './types';
 import { cloneStylePart, isPlainObject } from './helpers/utils';
 
@@ -30,19 +30,31 @@ export class ExcelJsWorkbookRenderer {
   constructor(private readonly renderPlan: RenderPlan) {}
 
   async writeFile(filePath: string): Promise<void> {
-    const workbook = this.createStreamingWorkbook({ filename: filePath });
-    await workbook.commit();
+    try {
+      const workbook = this.createStreamingWorkbook({ filename: filePath });
+      await workbook.commit();
+    } catch (error) {
+      throw normalizeRenderError(error);
+    }
   }
 
   async writeBuffer(): Promise<Buffer> {
-    const workbook = this.createWorkbook();
-    const buffer = await workbook.xlsx.writeBuffer();
-    return Buffer.from(buffer);
+    try {
+      const workbook = this.createWorkbook();
+      const buffer = await workbook.xlsx.writeBuffer();
+      return Buffer.from(buffer);
+    } catch (error) {
+      throw normalizeRenderError(error);
+    }
   }
 
   async writeStream(stream: Writable): Promise<void> {
-    const workbook = this.createStreamingWorkbook({ stream });
-    await workbook.commit();
+    try {
+      const workbook = this.createStreamingWorkbook({ stream });
+      await workbook.commit();
+    } catch (error) {
+      throw normalizeRenderError(error);
+    }
   }
 
   private createStreamingWorkbook(
@@ -159,7 +171,7 @@ export class ExcelJsWorkbookRenderer {
 
       for (let row = startRow; row <= endRow; row += 1) {
         for (let column = merge.startColumn; column <= merge.endColumn; column += 1) {
-          sheet.getCell(row, column).style = cloneStylePart(merge.style) as Partial<ExcelJS.Style>;
+          sheet.getCell(row, column).style = { ...merge.style } as Partial<ExcelJS.Style>;
         }
       }
     }
@@ -248,7 +260,7 @@ export class ExcelJsWorkbookRenderer {
     const registryStyle = this.renderPlan.styles?.[style];
 
     if (!registryStyle) {
-      throw new ReportEngineError(`Render plan references unknown style "${style}".`);
+      throw new RenderError(`Render plan references unknown style "${style}".`);
     }
 
     return registryStyle;
@@ -288,4 +300,16 @@ export class ExcelJsWorkbookRenderer {
 
     return merged as T;
   }
+}
+
+function normalizeRenderError(error: unknown): Error {
+  if (error instanceof RenderError) {
+    return error;
+  }
+
+  if (error instanceof ReportEngineError) {
+    return new RenderError(error.message);
+  }
+
+  return error instanceof Error ? error : new RenderError(String(error));
 }

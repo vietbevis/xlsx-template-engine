@@ -1,4 +1,4 @@
-import { ReportEngineError } from './errors';
+import { FormulaError } from './errors';
 import type {
   CellContent,
   FormulaBinaryOperator,
@@ -127,7 +127,7 @@ export function formatCellReference(address: CellAddress, currentSheetId?: strin
   }
 
   if (!address.sheetName) {
-    throw new ReportEngineError(`Formula reference for sheet "${address.sheetId}" is missing sheet name.`);
+    throw new FormulaError(`Formula reference for sheet "${address.sheetId}" is missing sheet name.`);
   }
 
   return `${quoteSheetName(address.sheetName)}!${localAddress}`;
@@ -146,7 +146,7 @@ function compileSumArguments(
   ];
 
   if (args.length === 0) {
-    throw new ReportEngineError('SUM formula must include a range or values.');
+    throw new FormulaError('SUM formula must include a range or values.');
   }
 
   return args.join(',');
@@ -156,21 +156,17 @@ function compileRangeReference(range: FormulaRangeReference, context: FormulaCom
   return requireCompileContext(context).resolveRangeIds(range.startId, range.endId, range.sheetId, range.scope);
 }
 
-export function createFormulaId(sheetId: string | undefined, id: string): string {
-  return sheetId ? `${sheetId}:${id}` : id;
-}
-
 function quoteSheetName(sheetName: string): string {
   return `'${sheetName.replace(/'/g, "''")}'`;
 }
 
 function compileRawFormula(expression: string): string {
   if (typeof expression !== 'string' || expression.trim() === '') {
-    throw new ReportEngineError('Raw formula expression must be a non-empty string.');
+    throw new FormulaError('Raw formula expression must be a non-empty string.');
   }
 
   if (expression.trimStart().startsWith('=')) {
-    throw new ReportEngineError("Formula expression must not start with '='.");
+    throw new FormulaError("Formula expression must not start with '='.");
   }
 
   return expression;
@@ -194,7 +190,7 @@ function compileLiteralFormula(value: string | number | boolean | null): string 
 
 function compileFunctionName(name: string): string {
   if (!/^[A-Za-z][A-Za-z0-9_.]*$/.test(name)) {
-    throw new ReportEngineError('Formula function name must be a valid Excel function name.');
+    throw new FormulaError('Formula function name must be a valid Excel function name.');
   }
 
   return name.toUpperCase();
@@ -204,7 +200,7 @@ function compileBinaryOperator(operator: FormulaBinaryOperator): string {
   const supportedOperators = new Set(['+', '-', '*', '/', '>', '>=', '<', '<=', '=', '<>']);
 
   if (!supportedOperators.has(operator)) {
-    throw new ReportEngineError(`Formula binary operator "${operator}" is not supported.`);
+    throw new FormulaError(`Formula binary operator "${operator}" is not supported.`);
   }
 
   return operator;
@@ -212,7 +208,7 @@ function compileBinaryOperator(operator: FormulaBinaryOperator): string {
 
 function requireCompileContext(context: FormulaCompileContext | undefined): FormulaCompileContext {
   if (!context) {
-    throw new ReportEngineError('Formula id references require a compile context.');
+    throw new FormulaError('Formula id references require a compile context.');
   }
 
   return context;
@@ -233,7 +229,7 @@ function columnNumberToName(column: number): string {
 
 function assertPositiveInteger(value: unknown, label: string): asserts value is number {
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-    throw new ReportEngineError(`${label} must be a positive integer.`);
+    throw new FormulaError(`${label} must be a positive integer.`);
   }
 }
 
@@ -242,5 +238,5 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 }
 
 function assertNever(value: never): never {
-  throw new ReportEngineError(`Unsupported formula type "${(value as FormulaDefinition).type}".`);
+  throw new FormulaError(`Unsupported formula type "${(value as FormulaDefinition).type}".`);
 }

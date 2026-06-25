@@ -1,17 +1,18 @@
-import { ValidationError as ReportEngineError } from './errors';
-import type { WorkbookDefinition } from './types';
+import { ValidationError } from './errors';
+import { calculateTableHeaderDepth } from './helpers/table';
+import type { TableColumnNode, WorkbookDefinition } from './types';
 
 export function validateWorkbookDefinition(workbook: WorkbookDefinition): void {
   if (!isPlainObject(workbook)) {
-    throw new ReportEngineError('Workbook definition must be an object.');
+    throw new ValidationError('Workbook definition must be an object.');
   }
 
   if (!Array.isArray(workbook.sheets)) {
-    throw new ReportEngineError('Workbook definition must include a sheets array.');
+    throw new ValidationError('Workbook definition must include a sheets array.');
   }
 
   if (workbook.sheets.length === 0) {
-    throw new ReportEngineError('Workbook definition must include at least one sheet.');
+    throw new ValidationError('Workbook definition must include at least one sheet.');
   }
 
   validateStyleObject(workbook.defaultStyle, 'Workbook defaultStyle');
@@ -22,21 +23,21 @@ export function validateWorkbookDefinition(workbook: WorkbookDefinition): void {
 
   for (const [index, sheet] of workbook.sheets.entries()) {
     if (!isPlainObject(sheet)) {
-      throw new ReportEngineError(`Sheet at index ${index} must be an object.`);
+      throw new ValidationError(`Sheet at index ${index} must be an object.`);
     }
 
     if (typeof sheet.id !== 'string' || sheet.id.trim() === '') {
-      throw new ReportEngineError(`Sheet at index ${index} must include a non-empty id.`);
+      throw new ValidationError(`Sheet at index ${index} must include a non-empty id.`);
     }
 
     if (typeof sheet.name !== 'string' || sheet.name.trim() === '') {
-      throw new ReportEngineError(`Sheet "${sheet.id}" must include a non-empty name.`);
+      throw new ValidationError(`Sheet "${sheet.id}" must include a non-empty name.`);
     }
 
     validateSheetName(sheet.name, sheet.id);
 
     if (!Array.isArray(sheet.blocks)) {
-      throw new ReportEngineError(`Sheet "${sheet.id}" must include a blocks array.`);
+      throw new ValidationError(`Sheet "${sheet.id}" must include a blocks array.`);
     }
 
     validateFreezePane(sheet.freezePane, `Sheet "${sheet.id}" freezePane`);
@@ -46,13 +47,13 @@ export function validateWorkbookDefinition(workbook: WorkbookDefinition): void {
     }
 
     if (sheetIds.has(sheet.id)) {
-      throw new ReportEngineError(`Duplicate sheet id "${sheet.id}".`);
+      throw new ValidationError(`Duplicate sheet id "${sheet.id}".`);
     }
 
     const normalizedSheetName = sheet.name.trim().toLowerCase();
 
     if (sheetNames.has(normalizedSheetName)) {
-      throw new ReportEngineError(`Duplicate sheet name "${sheet.name}".`);
+      throw new ValidationError(`Duplicate sheet name "${sheet.name}".`);
     }
 
     sheetIds.add(sheet.id);
@@ -66,14 +67,14 @@ function validateFreezePane(value: unknown, label: string): void {
   }
 
   if (!isPlainObject(value)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
 
   validatePositiveInteger(value.rows, `${label} rows`);
   validatePositiveInteger(value.columns, `${label} columns`);
 
   if (value.rows === undefined && value.columns === undefined) {
-    throw new ReportEngineError(`${label} must include rows or columns.`);
+    throw new ValidationError(`${label} must include rows or columns.`);
   }
 }
 
@@ -86,13 +87,13 @@ function validateBlock(
   const path = createBlockPath(sheetId, block, blockIndex);
 
   if (!isPlainObject(block)) {
-    throw new ReportEngineError(`${path} must be an object.`);
+    throw new ValidationError(`${path} must be an object.`);
   }
 
   const blockType = block.type;
 
   if (typeof blockType !== 'string' || blockType.trim() === '') {
-    throw new ReportEngineError(`${path} must include a non-empty type.`);
+    throw new ValidationError(`${path} must include a non-empty type.`);
   }
 
   switch (blockType) {
@@ -107,7 +108,7 @@ function validateBlock(
         const rows = block.rows;
 
         if (typeof rows !== 'number' || !Number.isInteger(rows) || rows < 1) {
-          throw new ReportEngineError(`${path} rows must be a positive integer.`);
+          throw new ValidationError(`${path} rows must be a positive integer.`);
         }
       }
       return;
@@ -125,7 +126,7 @@ function validateBlock(
       validateTableGroupsBlock(block, sheetId, blockIndex, styles);
       return;
     default:
-      throw new ReportEngineError(`Unknown block type "${blockType}" in sheet "${sheetId}".`);
+      throw new ValidationError(`Unknown block type "${blockType}" in sheet "${sheetId}".`);
   }
 }
 
@@ -140,11 +141,11 @@ function validateTableBlock(
   validateBaseTableBlock(block, sheetId, blockIndex, styles);
 
   if (!Array.isArray(block.data)) {
-    throw new ReportEngineError(`${label} data must be an array.`);
+    throw new ValidationError(`${label} data must be an array.`);
   }
 
   if (block.groups !== undefined) {
-    throw new ReportEngineError(`${label} must not include groups. Use type "table-groups" for grouped tables.`);
+    throw new ValidationError(`${label} must not include groups. Use type "table-groups" for grouped tables.`);
   }
 
   validateTableDataRows(block.data, `${label} data`);
@@ -161,11 +162,11 @@ function validateTableGroupsBlock(
   validateBaseTableBlock(block, sheetId, blockIndex, styles);
 
   if (block.data !== undefined) {
-    throw new ReportEngineError(`${label} must not include data. Put data inside groups[].data.`);
+    throw new ValidationError(`${label} must not include data. Put data inside groups[].data.`);
   }
 
   if (!Array.isArray(block.groups) || block.groups.length === 0) {
-    throw new ReportEngineError(`${label} groups must be a non-empty array.`);
+    throw new ValidationError(`${label} groups must be a non-empty array.`);
   }
 
   for (const [groupIndex, group] of block.groups.entries()) {
@@ -182,18 +183,18 @@ function validateBaseTableBlock(
   const label = createBlockPath(sheetId, block, blockIndex);
 
   if (!Array.isArray(block.columns) || block.columns.length === 0) {
-    throw new ReportEngineError(`${label} columns must be a non-empty array.`);
+    throw new ValidationError(`${label} columns must be a non-empty array.`);
   }
 
   if (block.headerRowHeights !== undefined) {
     if (!Array.isArray(block.headerRowHeights)) {
-      throw new ReportEngineError(`${label} headerRowHeights must be an array.`);
+      throw new ValidationError(`${label} headerRowHeights must be an array.`);
     }
 
-    const headerDepth = calculateTableHeaderDepth(block.columns);
+    const headerDepth = calculateTableHeaderDepth(block.columns as TableColumnNode[]);
 
     if (block.headerRowHeights.length > headerDepth) {
-      throw new ReportEngineError(`${label} headerRowHeights must not exceed header row count.`);
+      throw new ValidationError(`${label} headerRowHeights must not exceed header row count.`);
     }
 
     for (const [rowIndex, height] of block.headerRowHeights.entries()) {
@@ -209,22 +210,20 @@ function validateBaseTableBlock(
   validateStyleReference(block.summaryStyle, styles, `${label} summaryStyle`);
 
   if (block.rowHidden !== undefined && typeof block.rowHidden !== 'function') {
-    throw new ReportEngineError(`${label} rowHidden must be a function.`);
+    throw new ValidationError(`${label} rowHidden must be a function.`);
   }
 
   if (block.titleRows !== undefined) {
-    throw new ReportEngineError(
-      `${label} must not include titleRows. Use separate title/text blocks before the table.`,
-    );
+    throw new ValidationError(`${label} must not include titleRows. Use separate title/text blocks before the table.`);
   }
 
   if (block.preHeaderGrid !== undefined) {
-    throw new ReportEngineError(`${label} must not include preHeaderGrid. Use a separate grid block before the table.`);
+    throw new ValidationError(`${label} must not include preHeaderGrid. Use a separate grid block before the table.`);
   }
 
   if (block.footerRows !== undefined) {
     if (!Array.isArray(block.footerRows)) {
-      throw new ReportEngineError(`${label} footerRows must be an array.`);
+      throw new ValidationError(`${label} footerRows must be an array.`);
     }
 
     for (const [rowIndex, row] of block.footerRows.entries()) {
@@ -239,12 +238,12 @@ function validateBaseTableBlock(
 
 function validateTableGroup(group: unknown, label: string, styles: WorkbookDefinition['styles']): void {
   if (!isPlainObject(group)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
 
   if (group.headerRows !== undefined) {
     if (!Array.isArray(group.headerRows)) {
-      throw new ReportEngineError(`${label} headerRows must be an array.`);
+      throw new ValidationError(`${label} headerRows must be an array.`);
     }
 
     for (const [rowIndex, row] of group.headerRows.entries()) {
@@ -253,14 +252,14 @@ function validateTableGroup(group: unknown, label: string, styles: WorkbookDefin
   }
 
   if (!Array.isArray(group.data)) {
-    throw new ReportEngineError(`${label} data must be an array.`);
+    throw new ValidationError(`${label} data must be an array.`);
   }
 
   validateTableDataRows(group.data, `${label} data`);
 
   if (group.footerRows !== undefined) {
     if (!Array.isArray(group.footerRows)) {
-      throw new ReportEngineError(`${label} footerRows must be an array.`);
+      throw new ValidationError(`${label} footerRows must be an array.`);
     }
 
     for (const [rowIndex, row] of group.footerRows.entries()) {
@@ -272,21 +271,21 @@ function validateTableGroup(group: unknown, label: string, styles: WorkbookDefin
 function validateTableDataRows(rows: readonly unknown[], label: string): void {
   for (const [itemIndex, item] of rows.entries()) {
     if (isLegacyTableSectionRow(item)) {
-      throw new ReportEngineError(`${label} ${itemIndex} is a section row. Move it to headerRows or footerRows.`);
+      throw new ValidationError(`${label} ${itemIndex} is a section row. Move it to headerRows or footerRows.`);
     }
   }
 }
 
 function validateTableFooterRow(row: unknown, label: string, styles: WorkbookDefinition['styles']): void {
   if (!isPlainObject(row)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
 
   validatePositiveNumber(row.height, `${label} height`);
   validateStyleReference(row.style, styles, label);
 
   if (!Array.isArray(row.cells) || row.cells.length === 0) {
-    throw new ReportEngineError(`${label} cells must be a non-empty array.`);
+    throw new ValidationError(`${label} cells must be a non-empty array.`);
   }
 
   for (const [cellIndex, cell] of row.cells.entries()) {
@@ -296,22 +295,22 @@ function validateTableFooterRow(row: unknown, label: string, styles: WorkbookDef
 
 function validateTableSectionRow(row: unknown, label: string, styles: WorkbookDefinition['styles']): void {
   if (!isPlainObject(row)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
 
   validatePositiveNumber(row.height, `${label} height`);
   validateStyleReference(row.style, styles, label);
 
   if (row.resetRows !== undefined && typeof row.resetRows !== 'boolean') {
-    throw new ReportEngineError(`${label} resetRows must be a boolean.`);
+    throw new ValidationError(`${label} resetRows must be a boolean.`);
   }
 
   if (row.hidden !== undefined && typeof row.hidden !== 'boolean') {
-    throw new ReportEngineError(`${label} hidden must be a boolean.`);
+    throw new ValidationError(`${label} hidden must be a boolean.`);
   }
 
   if (!Array.isArray(row.cells) || row.cells.length === 0) {
-    throw new ReportEngineError(`${label} cells must be a non-empty array.`);
+    throw new ValidationError(`${label} cells must be a non-empty array.`);
   }
 
   for (const [cellIndex, cell] of row.cells.entries()) {
@@ -325,7 +324,7 @@ function isLegacyTableSectionRow(value: unknown): value is Record<string, unknow
 
 function validateTableSectionCell(cell: unknown, label: string, styles: WorkbookDefinition['styles']): void {
   if (!isPlainObject(cell)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
   rejectDeprecatedKeyFields(cell, label, ['key', 'columnKey']);
 
@@ -337,7 +336,7 @@ function validateTableSectionCell(cell: unknown, label: string, styles: Workbook
   validateOptionalKey(cell.columnId, `${label} columnId`);
 
   if (cell.column !== undefined && cell.columnId !== undefined) {
-    throw new ReportEngineError(`${label} must not include both column and columnId.`);
+    throw new ValidationError(`${label} must not include both column and columnId.`);
   }
 
   if (cell.value !== undefined && typeof cell.value !== 'function') {
@@ -345,7 +344,7 @@ function validateTableSectionCell(cell: unknown, label: string, styles: Workbook
   }
 
   if (cell.styleResolver !== undefined && typeof cell.styleResolver !== 'function') {
-    throw new ReportEngineError(`${label} styleResolver must be a function.`);
+    throw new ValidationError(`${label} styleResolver must be a function.`);
   }
 
   if (cell.colSpan !== undefined && cell.colSpan !== 'remaining') {
@@ -365,48 +364,48 @@ function validateTableColumn(
   const label = `Table column ${columnPath.join('.')} in block ${blockIndex} of sheet "${sheetId}"`;
 
   if (!isPlainObject(column)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
 
   if (typeof column.title !== 'string' || column.title.trim() === '') {
-    throw new ReportEngineError(`${label} title must be a non-empty string.`);
+    throw new ValidationError(`${label} title must be a non-empty string.`);
   }
   rejectDeprecatedKeyFields(column, label, ['key']);
 
   if (column.id !== undefined && (typeof column.id !== 'string' || column.id.trim() === '')) {
-    throw new ReportEngineError(`${label} id must be a non-empty string.`);
+    throw new ValidationError(`${label} id must be a non-empty string.`);
   }
 
   if (column.accessor !== undefined && typeof column.accessor !== 'function') {
-    throw new ReportEngineError(`${label} accessor must be a function.`);
+    throw new ValidationError(`${label} accessor must be a function.`);
   }
 
   if (column.hidden !== undefined && typeof column.hidden !== 'boolean') {
-    throw new ReportEngineError(`${label} hidden must be a boolean.`);
+    throw new ValidationError(`${label} hidden must be a boolean.`);
   }
 
   if (column.styleResolver !== undefined && typeof column.styleResolver !== 'function') {
-    throw new ReportEngineError(`${label} styleResolver must be a function.`);
+    throw new ValidationError(`${label} styleResolver must be a function.`);
   }
 
   const hasChildren = column.children !== undefined;
 
   if (hasChildren) {
     if (!Array.isArray(column.children) || column.children.length === 0) {
-      throw new ReportEngineError(`${label} children must be a non-empty array.`);
+      throw new ValidationError(`${label} children must be a non-empty array.`);
     }
 
     if (column.id !== undefined || column.accessor !== undefined) {
-      throw new ReportEngineError(`${label} with children must not include id or accessor.`);
+      throw new ValidationError(`${label} with children must not include id or accessor.`);
     }
 
     for (const [childIndex, childColumn] of column.children.entries()) {
       validateTableColumn(childColumn, sheetId, blockIndex, [...columnPath, childIndex], styles);
     }
   } else if (column.childrenRowOffset !== undefined) {
-    throw new ReportEngineError(`${label} childrenRowOffset requires children.`);
+    throw new ValidationError(`${label} childrenRowOffset requires children.`);
   } else if (column.id === undefined && column.accessor === undefined) {
-    throw new ReportEngineError(`${label} leaf column must include an id or accessor.`);
+    throw new ValidationError(`${label} leaf column must include an id or accessor.`);
   }
 
   validatePositiveInteger(column.childrenRowOffset, `${label} childrenRowOffset`);
@@ -425,20 +424,6 @@ function validateTableColumn(
   }
 }
 
-function calculateTableHeaderDepth(columns: unknown[]): number {
-  return Math.max(
-    ...columns.map((column) => {
-      if (!isPlainObject(column) || !Array.isArray(column.children) || column.children.length === 0) {
-        return 1;
-      }
-
-      const childrenRowOffset = typeof column.childrenRowOffset === 'number' ? column.childrenRowOffset : 1;
-
-      return childrenRowOffset + calculateTableHeaderDepth(column.children);
-    }),
-  );
-}
-
 function validateGridBlock(
   block: Record<string, unknown>,
   sheetId: string,
@@ -446,18 +431,18 @@ function validateGridBlock(
   styles: WorkbookDefinition['styles'],
 ): void {
   if (!Array.isArray(block.rows)) {
-    throw new ReportEngineError(`Block ${blockIndex} in sheet "${sheetId}" grid rows must be an array.`);
+    throw new ValidationError(`Block ${blockIndex} in sheet "${sheetId}" grid rows must be an array.`);
   }
 
   for (const [rowIndex, row] of block.rows.entries()) {
     if (!isPlainObject(row)) {
-      throw new ReportEngineError(`${createGridRowPath(sheetId, blockIndex, rowIndex)} must be an object.`);
+      throw new ValidationError(`${createGridRowPath(sheetId, blockIndex, rowIndex)} must be an object.`);
     }
 
     validatePositiveNumber(row.height, `${createGridRowPath(sheetId, blockIndex, rowIndex)} height`);
 
     if (!Array.isArray(row.cells)) {
-      throw new ReportEngineError(`${createGridRowPath(sheetId, blockIndex, rowIndex)} cells must be an array.`);
+      throw new ValidationError(`${createGridRowPath(sheetId, blockIndex, rowIndex)} cells must be an array.`);
     }
 
     for (const [cellIndex, cell] of row.cells.entries()) {
@@ -477,7 +462,7 @@ function validateGridCell(
   const label = createGridCellPath(sheetId, blockIndex, rowIndex, cellIndex, cell);
 
   if (!isPlainObject(cell)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
   rejectDeprecatedKeyFields(cell, label, ['key']);
 
@@ -493,7 +478,7 @@ function validateGridCell(
   validateStyleReference(cell.style, styles, label);
 
   if (cell.styleResolver !== undefined && typeof cell.styleResolver !== 'function') {
-    throw new ReportEngineError(`${label} styleResolver must be a function.`);
+    throw new ValidationError(`${label} styleResolver must be a function.`);
   }
 }
 
@@ -503,12 +488,12 @@ function validateStyleRegistry(styles: unknown): void {
   }
 
   if (!isPlainObject(styles)) {
-    throw new ReportEngineError('Workbook styles must be an object.');
+    throw new ValidationError('Workbook styles must be an object.');
   }
 
   for (const [styleName, style] of Object.entries(styles)) {
     if (styleName.trim() === '') {
-      throw new ReportEngineError('Workbook style names must be non-empty.');
+      throw new ValidationError('Workbook style names must be non-empty.');
     }
 
     validateStyleObject(style, `Style "${styleName}"`);
@@ -522,18 +507,18 @@ function validateStyleReference(styleValue: unknown, styles: WorkbookDefinition[
 
   if (typeof styleValue !== 'string') {
     if (!isPlainObject(styleValue)) {
-      throw new ReportEngineError(`${label} style must be a non-empty string or style object.`);
+      throw new ValidationError(`${label} style must be a non-empty string or style object.`);
     }
 
     return;
   }
 
   if (styleValue.trim() === '') {
-    throw new ReportEngineError(`${label} style must be a non-empty string or style object.`);
+    throw new ValidationError(`${label} style must be a non-empty string or style object.`);
   }
 
   if (!styles || !Object.prototype.hasOwnProperty.call(styles, styleValue)) {
-    throw new ReportEngineError(`${label} references unknown style "${styleValue}".`);
+    throw new ValidationError(`${label} references unknown style "${styleValue}".`);
   }
 }
 
@@ -543,13 +528,13 @@ function validateStyleObject(style: unknown, label: string): void {
   }
 
   if (!isPlainObject(style)) {
-    throw new ReportEngineError(`${label} must be an object.`);
+    throw new ValidationError(`${label} must be an object.`);
   }
 }
 
 function validateTextBlock(block: Record<string, unknown>, label: string, styles: WorkbookDefinition['styles']): void {
   if (typeof block.text !== 'string') {
-    throw new ReportEngineError(`${label} text must be a string.`);
+    throw new ValidationError(`${label} text must be a string.`);
   }
 
   validatePositiveNumber(block.height, `${label} height`);
@@ -571,7 +556,7 @@ function validatePositiveInteger(value: unknown, label: string): void {
   }
 
   if (typeof value !== 'number' || !Number.isInteger(value) || value < 1) {
-    throw new ReportEngineError(`${label} must be a positive integer.`);
+    throw new ValidationError(`${label} must be a positive integer.`);
   }
 }
 
@@ -581,7 +566,7 @@ function validatePositiveNumber(value: unknown, label: string): void {
   }
 
   if (typeof value !== 'number' || value <= 0) {
-    throw new ReportEngineError(`${label} must be greater than 0.`);
+    throw new ValidationError(`${label} must be greater than 0.`);
   }
 }
 
@@ -605,18 +590,18 @@ function validateCellContent(value: unknown, label: string): void {
     return;
   }
 
-  throw new ReportEngineError(`${label} must be a valid ExcelJS cell value or formula definition.`);
+  throw new ValidationError(`${label} must be a valid ExcelJS cell value or formula definition.`);
 }
 
 function validateFormulaDefinition(value: Record<string, unknown>, label: string): void {
   switch (value.type) {
     case 'raw':
       if (typeof value.expression !== 'string' || value.expression.trim() === '') {
-        throw new ReportEngineError(`${label} raw formula expression must be a non-empty string.`);
+        throw new ValidationError(`${label} raw formula expression must be a non-empty string.`);
       }
 
       if (value.expression.trimStart().startsWith('=')) {
-        throw new ReportEngineError(`${label} formula expression must not start with '='.`);
+        throw new ValidationError(`${label} formula expression must not start with '='.`);
       }
       return;
     case 'literal':
@@ -626,17 +611,17 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
         typeof value.value !== 'number' &&
         typeof value.value !== 'boolean'
       ) {
-        throw new ReportEngineError(`${label} literal formula value must be a string, number, boolean, or null.`);
+        throw new ValidationError(`${label} literal formula value must be a string, number, boolean, or null.`);
       }
       return;
     case 'sum':
       if (value.range === undefined && value.values === undefined) {
-        throw new ReportEngineError(`${label} sum formula must include a range or values.`);
+        throw new ValidationError(`${label} sum formula must include a range or values.`);
       }
 
       if (value.range !== undefined) {
         if (!isPlainObject(value.range)) {
-          throw new ReportEngineError(`${label} sum formula range must be an object.`);
+          throw new ValidationError(`${label} sum formula range must be an object.`);
         }
 
         validateFormulaRangeReference(value.range, `${label} sum formula range`);
@@ -644,7 +629,7 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
 
       if (value.values !== undefined) {
         if (!Array.isArray(value.values) || value.values.length === 0) {
-          throw new ReportEngineError(`${label} sum formula values must be a non-empty array.`);
+          throw new ValidationError(`${label} sum formula values must be a non-empty array.`);
         }
 
         for (const [index, child] of value.values.entries()) {
@@ -656,7 +641,7 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
       validateNestedFormulaDefinition(value.value, `${label} round formula value`);
 
       if (typeof value.digits !== 'number' || !Number.isInteger(value.digits) || value.digits < 0) {
-        throw new ReportEngineError(`${label} round formula digits must be a non-negative integer.`);
+        throw new ValidationError(`${label} round formula digits must be a non-negative integer.`);
       }
       return;
     case 'if':
@@ -666,11 +651,11 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
       return;
     case 'call':
       if (typeof value.name !== 'string' || !/^[A-Za-z][A-Za-z0-9_.]*$/.test(value.name)) {
-        throw new ReportEngineError(`${label} call formula name must be a valid Excel function name.`);
+        throw new ValidationError(`${label} call formula name must be a valid Excel function name.`);
       }
 
       if (!Array.isArray(value.args)) {
-        throw new ReportEngineError(`${label} call formula args must be an array.`);
+        throw new ValidationError(`${label} call formula args must be an array.`);
       }
 
       for (const [index, child] of value.args.entries()) {
@@ -685,7 +670,7 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
     case 'count':
     case 'counta':
       if (!isPlainObject(value.range)) {
-        throw new ReportEngineError(`${label} ${value.type} formula range must be an object.`);
+        throw new ValidationError(`${label} ${value.type} formula range must be an object.`);
       }
 
       validateFormulaRangeReference(value.range, `${label} ${value.type} formula range`);
@@ -702,7 +687,7 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
         typeof value.operator !== 'string' ||
         !['+', '-', '*', '/', '>', '>=', '<', '<=', '=', '<>'].includes(value.operator)
       ) {
-        throw new ReportEngineError(`${label} binary formula operator is not supported.`);
+        throw new ValidationError(`${label} binary formula operator is not supported.`);
       }
 
       validateNestedFormulaDefinition(value.left, `${label} binary formula left`);
@@ -717,13 +702,13 @@ function validateFormulaDefinition(value: Record<string, unknown>, label: string
       validateRequiredKey(value.id, `${label} ref formula id`);
       return;
     default:
-      throw new ReportEngineError(`${label} formula type is not supported.`);
+      throw new ValidationError(`${label} formula type is not supported.`);
   }
 }
 
 function validateFormulaArray(value: unknown, label: string): void {
   if (!Array.isArray(value) || value.length === 0) {
-    throw new ReportEngineError(`${label} must be a non-empty array.`);
+    throw new ValidationError(`${label} must be a non-empty array.`);
   }
 
   for (const [index, child] of value.entries()) {
@@ -733,7 +718,7 @@ function validateFormulaArray(value: unknown, label: string): void {
 
 function validateNestedFormulaDefinition(value: unknown, label: string): void {
   if (!isPlainObject(value) || typeof value.type !== 'string') {
-    throw new ReportEngineError(`${label} must be a formula definition.`);
+    throw new ValidationError(`${label} must be a formula definition.`);
   }
 
   validateFormulaDefinition(value, label);
@@ -746,11 +731,11 @@ function validateFormulaRangeReference(value: Record<string, unknown>, label: st
   validateRequiredKey(value.endId, `${label} endId`);
 
   if (value.scope !== undefined && value.scope !== 'currentRows' && value.scope !== 'allRows') {
-    throw new ReportEngineError(`${label} scope must be currentRows or allRows.`);
+    throw new ValidationError(`${label} scope must be currentRows or allRows.`);
   }
 
   if (value.sheetId !== undefined && value.scope !== undefined) {
-    throw new ReportEngineError(`${label} must not include both sheetId and scope.`);
+    throw new ValidationError(`${label} must not include both sheetId and scope.`);
   }
 }
 
@@ -768,14 +753,14 @@ function validateOptionalId(value: unknown, label: string): void {
 
 function validateRequiredKey(value: unknown, label: string): void {
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new ReportEngineError(`${label} must be a non-empty string.`);
+    throw new ValidationError(`${label} must be a non-empty string.`);
   }
 }
 
 function rejectDeprecatedKeyFields(value: Record<string, unknown>, label: string, fields: readonly string[]): void {
   for (const field of fields) {
     if (Object.prototype.hasOwnProperty.call(value, field)) {
-      throw new ReportEngineError(`${label} uses deprecated "${field}"; use id-based fields.`);
+      throw new ValidationError(`${label} uses deprecated "${field}"; use id-based fields.`);
     }
   }
 }
@@ -813,11 +798,11 @@ function createGridCellPath(
 
 function validateSheetName(sheetName: string, sheetId: string): void {
   if (sheetName.length > 31) {
-    throw new ReportEngineError(`Sheet "${sheetId}" name must be 31 characters or fewer.`);
+    throw new ValidationError(`Sheet "${sheetId}" name must be 31 characters or fewer.`);
   }
 
   if (/[:\\/?*[\]]/.test(sheetName)) {
-    throw new ReportEngineError(`Sheet "${sheetId}" name contains characters Excel does not allow.`);
+    throw new ValidationError(`Sheet "${sheetId}" name contains characters Excel does not allow.`);
   }
 }
 

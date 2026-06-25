@@ -25,44 +25,34 @@ export interface CompileErrorDetails {
   id?: string;
 }
 
-export class CompileError extends ReportEngineError {
+abstract class ContextualReportEngineError extends ReportEngineError {
   readonly sheetId?: string;
   readonly blockIndex?: number;
   readonly id?: string;
 
-  constructor(message: string, details: CompileErrorDetails = {}) {
+  protected constructor(name: string, message: string, details: CompileErrorDetails = {}) {
     super(message);
-    this.name = 'CompileError';
+    this.name = name;
     this.sheetId = details.sheetId;
     this.blockIndex = details.blockIndex;
     this.id = details.id;
   }
 }
 
-export class FormulaError extends ReportEngineError {
-  readonly sheetId?: string;
-  readonly blockIndex?: number;
-  readonly id?: string;
-
+export class CompileError extends ContextualReportEngineError {
   constructor(message: string, details: CompileErrorDetails = {}) {
-    super(message);
-    this.name = 'FormulaError';
-    this.sheetId = details.sheetId;
-    this.blockIndex = details.blockIndex;
-    this.id = details.id;
+    super('CompileError', message, details);
   }
 }
 
-export class RenderError extends ReportEngineError {
-  readonly sheetId?: string;
-  readonly blockIndex?: number;
-  readonly id?: string;
-
+export class FormulaError extends ContextualReportEngineError {
   constructor(message: string, details: CompileErrorDetails = {}) {
-    super(message);
-    this.name = 'RenderError';
-    this.sheetId = details.sheetId;
-    this.blockIndex = details.blockIndex;
-    this.id = details.id;
+    super('FormulaError', message, details);
+  }
+}
+
+export class RenderError extends ContextualReportEngineError {
+  constructor(message: string, details: CompileErrorDetails = {}) {
+    super('RenderError', message, details);
   }
 }

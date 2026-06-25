@@ -1,5 +1,5 @@
 import type { CompileContext } from './compile-context';
-import { ReportEngineError } from './errors';
+import { CompileError, ReportEngineError } from './errors';
 import {
   createGridFormulaContext,
   createTableRowFormulaContext,
@@ -416,9 +416,37 @@ interface SectionRowOptions {
   writer: SheetWriter;
 }
 
+interface SectionCellPlacement {
+  cell: TableSectionRow['cells'][number];
+  cellIndex: number;
+  columnOffset: number;
+  colSpan: number;
+}
+
 function writeSectionRow(sectionRow: TableSectionRow, opts: SectionRowOptions): number {
   const { row, context, writer } = opts;
   const occupied = new Set<number>();
+  const placements: SectionCellPlacement[] = [];
+
+  if (sectionRow.height !== undefined) writer.setRowHeight({ row, height: sectionRow.height });
+  if (sectionRow.hidden !== undefined) writer.setRowHidden({ row, hidden: sectionRow.hidden });
+
+  for (const [cellIndex, cell] of sectionRow.cells.entries()) {
+    const colOffset = resolveSectionCellColumnOffset(cell, cellIndex, opts.columnIdMap, occupied);
+    const colSpan = resolveSectionCellColSpan(cell, colOffset, opts.tableWidth);
+
+    if (cell.id) {
+      context.registry.register(context.sheet.id, context.sheet.name, cell.id, row, 1 + colOffset);
+    }
+
+    for (let o = colOffset; o < colOffset + colSpan; o++) {
+      if (occupied.has(o)) throw new CompileError('Table section row cells must not overlap.');
+      occupied.add(o);
+    }
+
+    placements.push({ cell, cellIndex, columnOffset: colOffset, colSpan });
+  }
+
   const formulaCtx = createTableSectionFormulaContext(
     opts.columnIdMap,
     opts.currentRendered,
@@ -429,18 +457,7 @@ function writeSectionRow(sectionRow: TableSectionRow, opts: SectionRowOptions): 
     context.sheet.id,
   );
 
-  if (sectionRow.height !== undefined) writer.setRowHeight({ row, height: sectionRow.height });
-  if (sectionRow.hidden !== undefined) writer.setRowHidden({ row, hidden: sectionRow.hidden });
-
-  // Register section cell IDs vào registry (single-pass)
-  for (const [cellIndex, cell] of sectionRow.cells.entries()) {
-    const colOffset = resolveSectionCellColumnOffset(cell, cellIndex, opts.columnIdMap, occupied);
-    const colSpan = resolveSectionCellColSpan(cell, colOffset, opts.tableWidth);
-
-    if (cell.id) {
-      context.registry.register(context.sheet.id, context.sheet.name, cell.id, row, 1 + colOffset);
-    }
-
+  for (const { cell, cellIndex, columnOffset, colSpan } of placements) {
     const rawValue = resolveSectionCellValue(cell, {
       rows: opts.currentRendered.map((r) => r.data),
       allRows: opts.allDataRows,
@@ -453,7 +470,7 @@ function writeSectionRow(sectionRow: TableSectionRow, opts: SectionRowOptions): 
 
     writer.addCell({
       row,
-      column: 1 + colOffset,
+      column: 1 + columnOffset,
       ...compiled,
       style: resolveStyle(
         cell.style ?? sectionRow.style,
@@ -467,15 +484,10 @@ function writeSectionRow(sectionRow: TableSectionRow, opts: SectionRowOptions): 
     if (colSpan > 1) {
       writer.addMerge({
         startRow: row,
-        startColumn: 1 + colOffset,
+        startColumn: 1 + columnOffset,
         endRow: row,
-        endColumn: 1 + colOffset + colSpan - 1,
+        endColumn: 1 + columnOffset + colSpan - 1,
       });
-    }
-
-    for (let o = colOffset; o < colOffset + colSpan; o++) {
-      if (occupied.has(o)) throw new ReportEngineError('Table section row cells must not overlap.');
-      occupied.add(o);
     }
   }
 

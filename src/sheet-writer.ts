@@ -93,10 +93,8 @@ export class SheetWriter {
     this.sheet.rowVisibility.push({ ...visibility });
   }
 
-  /** Trả về sheet đã được sắp xếp sẵn sàng cho ExcelJS renderer. */
+  /** Trả về sheet đã sẵn sàng cho ExcelJS renderer. */
   finish(): RenderPlanSheet {
-    this.sheet.rows.sort((a, b) => a.index - b.index);
-
     for (const row of this.sheet.rows) {
       row.cells.sort((a, b) => a.column - b.column);
     }

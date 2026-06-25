@@ -1,14 +1,19 @@
 import { AddressRegistry } from './address-registry';
 import { compileBlock } from './block-compiler';
+import { CompileError, FormulaError, ReportEngineError, ValidationError } from './errors';
 import { cloneStylePart } from './helpers/style';
-import { createSheetColumnCounts } from './helpers/workbook';
+import { flattenColumns } from './helpers/table';
 import type { RenderPlan } from './render-plan';
 import { SheetWriter } from './sheet-writer';
-import type { WorkbookDefinition } from './types';
+import type { Block, GridRow, SheetDefinition, WorkbookDefinition } from './types';
 import { validateWorkbookDefinition } from './validation';
 import type { RenderContext } from './variable-engine';
 
 export interface CompileWorkbookOptions {
+  /**
+   * Runtime context is merged over `workbook.context`, so values passed here
+   * intentionally override same-named definition defaults.
+   */
   context?: RenderContext;
 }
 
@@ -16,7 +21,7 @@ export interface CompileWorkbookOptions {
  * Compile `WorkbookDefinition` → `RenderPlan` trong **single-pass**.
  *
  * Loại bỏ hoàn toàn:
- * - `createSheetColumnCounts` pre-pass (tích hợp vào context)
+ * - workbook-level column-count pre-pass (sheet width is measured per sheet)
  * - `collectWorkbookFormulaIds` pre-pass (thay bằng AddressRegistry ghi inline)
  * - `RenderPlanBuilder` (thay bằng `SheetWriter` per-sheet)
  * - `LayoutCursor` mutable (thay bằng `row` number thuần)
@@ -27,7 +32,6 @@ export function compileWorkbookToRenderPlan(
 ): RenderPlan {
   validateWorkbookDefinition(workbook);
 
-  const sheetColumnCounts = createSheetColumnCounts(workbook);
   const registry = new AddressRegistry();
   const workbookContext = { ...(workbook.context ?? {}), ...(options.context ?? {}) };
 
@@ -43,15 +47,19 @@ export function compileWorkbookToRenderPlan(
     const context = {
       workbook,
       sheet,
-      sheetColumnCount: sheetColumnCounts.get(sheet.id) ?? 1,
+      sheetColumnCount: measureSheetColumnCount(sheet),
       variables: { workbook: workbookContext, sheet: sheet.context },
       registry,
     };
 
     let row = 1;
 
-    for (const block of sheet.blocks) {
-      row = compileBlock(block, context, writer, row);
+    for (const [blockIndex, block] of sheet.blocks.entries()) {
+      try {
+        row = compileBlock(block, context, writer, row);
+      } catch (error) {
+        throw normalizeCompileError(error, sheet.id, blockIndex);
+      }
     }
 
     return writer.finish();
@@ -72,8 +80,50 @@ export function compileWorkbookToRenderPlan(
   };
 }
 
+function normalizeCompileError(error: unknown, sheetId: string, blockIndex: number): Error {
+  if (error instanceof ValidationError || error instanceof FormulaError || error instanceof CompileError) {
+    return error;
+  }
+
+  if (error instanceof ReportEngineError) {
+    return new CompileError(error.message, { sheetId, blockIndex });
+  }
+
+  return error instanceof Error ? error : new CompileError(String(error), { sheetId, blockIndex });
+}
+
 function resolveStyles(styles: NonNullable<WorkbookDefinition['styles']>): NonNullable<WorkbookDefinition['styles']> {
   return Object.fromEntries(
     Object.entries(styles).map(([name, style]) => [name, cloneStylePart(style) as typeof style]),
   );
+}
+
+function measureSheetColumnCount(sheet: SheetDefinition): number {
+  return Math.max(1, ...sheet.blocks.map(measureBlockColumnCount));
+}
+
+function measureBlockColumnCount(block: Block): number {
+  switch (block.type) {
+    case 'title':
+    case 'text':
+      return block.colSpan === 'remaining' ? 1 : (block.colSpan ?? 1);
+    case 'spacer':
+    case 'divider':
+      return 1;
+    case 'grid':
+      return Math.max(1, ...block.rows.map(measureGridRowColumnCount));
+    case 'table':
+    case 'table-groups':
+      return flattenColumns(block.columns).length;
+    default:
+      return assertNeverBlock(block);
+  }
+}
+
+function measureGridRowColumnCount(row: GridRow): number {
+  return row.cells.reduce((width, cell) => width + (cell.colSpan === 'remaining' ? 1 : (cell.colSpan ?? 1)), 0);
+}
+
+function assertNeverBlock(block: never): never {
+  throw new CompileError(`Unsupported block type "${(block as Block).type}".`);
 }

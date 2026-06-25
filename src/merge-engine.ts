@@ -1,4 +1,5 @@
 import { ReportEngineError } from './errors';
+import { assertPositiveInteger } from './helpers/common';
 import type { RenderMergeRange } from './render-plan';
 
 export interface MergeRange extends RenderMergeRange {
@@ -16,10 +17,10 @@ export type NormalizedMergeRange = { type: 'skip-single-cell' } | { type: 'range
  * - Ngược lại, gắn thêm `sheetId` và trả về range hợp lệ.
  */
 export function normalizeMergeRange(sheetId: string, range: RenderMergeRange): NormalizedMergeRange {
-  assertPositiveInteger(range.startRow, 'merge start row');
-  assertPositiveInteger(range.startColumn, 'merge start column');
-  assertPositiveInteger(range.endRow, 'merge end row');
-  assertPositiveInteger(range.endColumn, 'merge end column');
+  assertPositiveInteger(range.startRow, 'Render plan merge start row');
+  assertPositiveInteger(range.startColumn, 'Render plan merge start column');
+  assertPositiveInteger(range.endRow, 'Render plan merge end row');
+  assertPositiveInteger(range.endColumn, 'Render plan merge end column');
 
   if (range.endRow < range.startRow || range.endColumn < range.startColumn) {
     throw new ReportEngineError('Merge range end must be greater than or equal to start.');
@@ -86,17 +87,4 @@ function rangesOverlap(left: RenderMergeRange, right: RenderMergeRange): boolean
  */
 function formatMergeRange(range: MergeRange): string {
   return `"${range.sheetId}"!R${range.startRow}C${range.startColumn}:R${range.endRow}C${range.endColumn}`;
-}
-
-/**
- * Assert một giá trị phải là số nguyên dương (>= 1).
- * Dùng để validate tọa độ hàng/cột trong merge range trước khi xử lý.
- *
- * @param value - Giá trị cần kiểm tra.
- * @param label - Tên trường, dùng trong thông báo lỗi (vd: "merge start row").
- */
-function assertPositiveInteger(value: number, label: string): void {
-  if (!Number.isInteger(value) || value < 1) {
-    throw new ReportEngineError(`Render plan ${label} must be a positive integer.`);
-  }
 }
