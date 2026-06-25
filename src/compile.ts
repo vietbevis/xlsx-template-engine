@@ -5,7 +5,6 @@ import { CompileError, FormulaError, ReportEngineError, ValidationError } from '
 import { cloneStylePart } from './helpers/style';
 import { flattenColumns } from './helpers/table';
 import ExcelJS from 'exceljs';
-import { SheetWriter } from './sheet-writer';
 import type { Block, GridRow, SheetDefinition, WorkbookDefinition } from './types';
 import { validateWorkbookDefinition } from './validation';
 import type { RenderContext } from './variable-engine';
@@ -48,11 +47,11 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
         : undefined,
     });
 
-    const writer = new SheetWriter(worksheet, styleConfig);
-
     const context = {
       workbook,
       sheet,
+      worksheet,
+      styleConfig,
       sheetColumnCount: measureSheetColumnCount(sheet),
       variables: { workbook: workbookContext, sheet: sheet.context },
       registry,
@@ -62,7 +61,7 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
 
     for (const [blockIndex, block] of sheet.blocks.entries()) {
       try {
-        row = compileBlock(block, context, writer, row);
+        row = compileBlock(block, context, row);
       } catch (error) {
         throw normalizeCompileError(error, sheet.id, blockIndex);
       }

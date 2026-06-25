@@ -16,7 +16,9 @@ import {
   resolveSectionCellColumnOffset,
   resolveSectionCellValue,
 } from './helpers/utils';
-import type { SheetWriter } from './sheet-writer';
+import type ExcelJS from 'exceljs';
+import { writeCell, writeMerge } from './helpers/exceljs';
+import { mergeCellStyles } from './helpers/style';
 import type {
   Block,
   CellContent,
@@ -29,6 +31,8 @@ import type {
   TableSectionCell,
   TableSectionRow,
   WorkbookDefinition,
+  CellStyleDefinition,
+  StyleRegistry,
 } from './types';
 import { interpolateCellValue, interpolateVariables, type VariableScope } from './variable-engine';
 import { AddressRegistry } from './address-registry';
@@ -39,24 +43,29 @@ export interface CompileContext {
   readonly sheetColumnCount: number;
   readonly variables: VariableScope;
   readonly registry: AddressRegistry;
+  readonly worksheet: ExcelJS.Worksheet;
+  readonly styleConfig: {
+    defaultStyle?: CellStyleDefinition;
+    styles?: StyleRegistry;
+  };
 }
 
 // ─── Public entry point ──────────────────────────────────────────────────────
 
-export function compileBlock(block: Block, context: CompileContext, writer: SheetWriter, startRow: number): number {
+export function compileBlock(block: Block, context: CompileContext, startRow: number): number {
   switch (block.type) {
     case 'title':
     case 'text':
-      return compileTextBlock(block, context, writer, startRow);
+      return compileTextBlock(block, context, startRow);
     case 'spacer':
       return startRow + (block.rows ?? 1);
     case 'divider':
-      return compileDividerBlock(block, writer, startRow);
+      return compileDividerBlock(block, context, startRow);
     case 'grid':
-      return compileGridBlock(block, context, writer, startRow);
+      return compileGridBlock(block, context, startRow);
     case 'table':
     case 'table-groups':
-      return compileTableBlock(block, context, writer, startRow);
+      return compileTableBlock(block, context, startRow);
     default:
       throw new ReportEngineError(`Unknown block type "${(block as Block).type}" in sheet "${context.sheet.id}".`);
   }
@@ -67,20 +76,20 @@ export function compileBlock(block: Block, context: CompileContext, writer: Shee
 function compileTextBlock(
   block: Extract<Block, { type: 'title' | 'text' }>,
   context: CompileContext,
-  writer: SheetWriter,
   row: number,
 ): number {
   const variables = blockVariables(context, block);
   const colSpan = resolveColSpan(block.colSpan, 0, context.sheetColumnCount);
 
-  writer.addCell({ row, column: 1, value: interpolateVariables(block.text, variables), style: block.style });
+  const style = resolveStyle(block.style, undefined, context, 'text block');
+  writeCell(context.worksheet, row, 1, interpolateVariables(block.text, variables), style);
 
   if (colSpan > 1) {
-    writer.addMerge({ startRow: row, startColumn: 1, endRow: row, endColumn: colSpan });
+    writeMerge(context.worksheet, row, 1, row, colSpan);
   }
 
   if (block.height !== undefined) {
-    writer.setRowHeight({ row, height: block.height });
+    context.worksheet.getRow(row).height = block.height;
   }
 
   return row + 1;
@@ -90,13 +99,14 @@ function compileTextBlock(
 
 function compileDividerBlock(
   block: Extract<Block, { type: 'divider' }>,
-  writer: SheetWriter,
+  context: CompileContext,
   startRow: number,
 ): number {
   const rows = block.rows ?? 1;
+  const style = resolveStyle(block.style, undefined, context, 'divider block');
 
   for (let offset = 0; offset < rows; offset++) {
-    writer.addCell({ row: startRow + offset, column: 1, value: '', style: block.style });
+    writeCell(context.worksheet, startRow + offset, 1, '', style);
   }
 
   return startRow + rows;
@@ -112,12 +122,7 @@ interface GridPlacement {
   colSpan: number;
 }
 
-function compileGridBlock(
-  block: Extract<Block, { type: 'grid' }>,
-  context: CompileContext,
-  writer: SheetWriter,
-  startRow: number,
-): number {
+function compileGridBlock(block: Extract<Block, { type: 'grid' }>, context: CompileContext, startRow: number): number {
   const occupied = new Set<string>();
   const placements: GridPlacement[] = [];
   const variables = blockVariables(context, block);
@@ -128,7 +133,7 @@ function compileGridBlock(
     const absRow = startRow + rowOffset;
 
     if (gridRow.height !== undefined) {
-      writer.setRowHeight({ row: absRow, height: gridRow.height });
+      context.worksheet.getRow(absRow).height = gridRow.height;
     }
 
     let colOffset = 0;
@@ -159,30 +164,25 @@ function compileGridBlock(
   for (const p of placements) {
     const compiled = compileCellContent(interpolateCellValue(p.cell.value, variables), formulaCtx);
 
-    writer.addCell({
-      row: p.row,
-      column: p.column,
-      ...compiled,
-      formulaResult: isFormulaDefinition(p.cell.value) ? p.cell.formulaResult : undefined,
-      style: resolveStyle(
-        p.cell.style,
-        p.cell.styleResolver?.(compiled.value),
-        context,
-        `grid cell "${p.cell.id ?? `${p.row}:${p.column}`}"`,
-      ),
-    });
+    const style = resolveStyle(
+      p.cell.style,
+      p.cell.styleResolver?.(compiled.value),
+      context,
+      `grid cell "${p.cell.id ?? `${p.row}:${p.column}`}"`,
+    );
+
+    const valueOrFormula = isFormulaDefinition(p.cell.value)
+      ? { formula: compiled.formula, result: p.cell.formulaResult }
+      : compiled.value;
+
+    writeCell(context.worksheet, p.row, p.column, valueOrFormula, style);
 
     if (p.cell.width !== undefined) {
-      writer.setColumnWidth({ column: p.column, width: p.cell.width });
+      context.worksheet.getColumn(p.column).width = p.cell.width;
     }
 
     if (p.rowSpan > 1 || p.colSpan > 1) {
-      writer.addMerge({
-        startRow: p.row,
-        startColumn: p.column,
-        endRow: p.row + p.rowSpan - 1,
-        endColumn: p.column + p.colSpan - 1,
-      });
+      writeMerge(context.worksheet, p.row, p.column, p.row + p.rowSpan - 1, p.column + p.colSpan - 1);
     }
   }
 
@@ -194,10 +194,9 @@ function compileGridBlock(
 function compileTableBlock(
   block: Extract<Block, { type: 'table' | 'table-groups' }>,
   context: CompileContext,
-  writer: SheetWriter,
   startRow: number,
 ): number {
-  return new TableBlockCompiler(block, context, writer).compile(startRow);
+  return new TableBlockCompiler(block, context).compile(startRow);
 }
 
 // ─── Table helpers ────────────────────────────────────────────────────────────
@@ -227,7 +226,6 @@ class TableBlockCompiler {
   constructor(
     private readonly block: Extract<Block, { type: 'table' | 'table-groups' }>,
     private readonly context: CompileContext,
-    private readonly writer: SheetWriter,
   ) {}
 
   compile(startRow: number): number {
@@ -244,31 +242,44 @@ class TableBlockCompiler {
 
   private writeHeader(startRow: number): number {
     for (const [offset, height] of (this.block.headerRowHeights ?? []).entries()) {
-      this.writer.setRowHeight({ row: startRow + offset, height });
+      this.context.worksheet.getRow(startRow + offset).height = height;
     }
 
     for (const hCell of buildHeaderMatrix(this.block.columns, this.headerDepth)) {
-      this.writer.addCell({
-        row: startRow + hCell.rowOffset,
-        column: 1 + hCell.columnOffset,
-        value: interpolateVariables(hCell.title, this.variables),
-        style: hCell.style ?? this.block.headerStyle,
-        inlineStyle: this.inlineStyle,
-      });
+      const style = resolveStyle(
+        hCell.style ?? this.block.headerStyle,
+        undefined,
+        this.context,
+        'header cell',
+        this.inlineStyle,
+      );
+
+      writeCell(
+        this.context.worksheet,
+        startRow + hCell.rowOffset,
+        1 + hCell.columnOffset,
+        interpolateVariables(hCell.title, this.variables),
+        style,
+      );
 
       if (hCell.rowSpan > 1 || hCell.colSpan > 1) {
-        this.writer.addMerge({
-          startRow: startRow + hCell.rowOffset,
-          startColumn: 1 + hCell.columnOffset,
-          endRow: startRow + hCell.rowOffset + hCell.rowSpan - 1,
-          endColumn: 1 + hCell.columnOffset + hCell.colSpan - 1,
-        });
+        writeMerge(
+          this.context.worksheet,
+          startRow + hCell.rowOffset,
+          1 + hCell.columnOffset,
+          startRow + hCell.rowOffset + hCell.rowSpan - 1,
+          1 + hCell.columnOffset + hCell.colSpan - 1,
+        );
       }
     }
 
     for (const [offset, col] of this.leafColumns.entries()) {
-      if (col.width !== undefined) this.writer.setColumnWidth({ column: 1 + offset, width: col.width });
-      if (col.hidden !== undefined) this.writer.setColumnHidden({ column: 1 + offset, hidden: col.hidden });
+      if (col.width !== undefined) {
+        this.context.worksheet.getColumn(1 + offset).width = col.width;
+      }
+      if (col.hidden !== undefined) {
+        this.context.worksheet.getColumn(1 + offset).hidden = col.hidden;
+      }
     }
 
     return startRow + this.headerDepth;
@@ -331,26 +342,25 @@ class TableBlockCompiler {
         assertTableCellValue(rawValue);
         const compiled = compileCellContent(interpolateCellValue(rawValue, this.variables), formulaCtx);
 
-        this.writer.addCell({
-          row,
-          column: 1 + colOffset,
-          ...compiled,
-          style: resolveStyle(
-            col.bodyStyle ?? col.style ?? bandStyle ?? this.block.bodyStyle,
-            col.styleResolver?.(compiled.value, rowData, dataIndex),
-            this.context,
-            `table column "${String(col.id ?? col.title)}"`,
-          ),
-          inlineStyle: this.inlineStyle,
-        });
+        const style = resolveStyle(
+          col.bodyStyle ?? col.style ?? bandStyle ?? this.block.bodyStyle,
+          col.styleResolver?.(compiled.value, rowData, dataIndex),
+          this.context,
+          `table column "${String(col.id ?? col.title)}"`,
+          this.inlineStyle,
+        );
+
+        const valueOrFormula = isFormulaDefinition(rawValue) ? { formula: compiled.formula } : compiled.value;
+
+        writeCell(this.context.worksheet, row, 1 + colOffset, valueOrFormula, style);
       }
 
       if (this.block.bodyRowHeight !== undefined) {
-        this.writer.setRowHeight({ row, height: this.block.bodyRowHeight });
+        this.context.worksheet.getRow(row).height = this.block.bodyRowHeight;
       }
 
       if (this.block.rowHidden?.(rowData, dataIndex) === true) {
-        this.writer.setRowHidden({ row, hidden: true });
+        this.context.worksheet.getRow(row).hidden = true;
       }
 
       const rendered: RenderedDataRow = { data: rowData, row };
@@ -375,8 +385,12 @@ class TableBlockCompiler {
       allRows: this.allRendered,
     });
 
-    if (sectionRow.height !== undefined) this.writer.setRowHeight({ row, height: sectionRow.height });
-    if (sectionRow.hidden !== undefined) this.writer.setRowHidden({ row, hidden: sectionRow.hidden });
+    if (sectionRow.height !== undefined) {
+      this.context.worksheet.getRow(row).height = sectionRow.height;
+    }
+    if (sectionRow.hidden !== undefined) {
+      this.context.worksheet.getRow(row).hidden = sectionRow.hidden;
+    }
 
     for (const { cell, cellIndex, columnOffset, colSpan } of placements) {
       const rawValue = resolveSectionCellValue(cell, {
@@ -389,26 +403,20 @@ class TableBlockCompiler {
       assertTableCellValue(rawValue);
       const compiled = compileCellContent(interpolateCellValue(rawValue, this.variables), formulaCtx);
 
-      this.writer.addCell({
-        row,
-        column: 1 + columnOffset,
-        ...compiled,
-        style: resolveStyle(
-          cell.style ?? sectionRow.style,
-          cell.styleResolver?.(compiled.value),
-          this.context,
-          `table section cell ${cellIndex + 1}`,
-        ),
-        inlineStyle: this.inlineStyle,
-      });
+      const style = resolveStyle(
+        cell.style ?? sectionRow.style,
+        cell.styleResolver?.(compiled.value),
+        this.context,
+        `table section cell ${cellIndex + 1}`,
+        this.inlineStyle,
+      );
+
+      const valueOrFormula = isFormulaDefinition(rawValue) ? { formula: compiled.formula } : compiled.value;
+
+      writeCell(this.context.worksheet, row, 1 + columnOffset, valueOrFormula, style);
 
       if (colSpan > 1) {
-        this.writer.addMerge({
-          startRow: row,
-          startColumn: 1 + columnOffset,
-          endRow: row,
-          endColumn: 1 + columnOffset + colSpan - 1,
-        });
+        writeMerge(this.context.worksheet, row, 1 + columnOffset, row, 1 + columnOffset + colSpan - 1);
       }
     }
 
@@ -458,13 +466,8 @@ class TableBlockCompiler {
 
     for (let o = 0; o < this.tableWidth; o++) {
       if (!occupied.has(o)) {
-        this.writer.addCell({
-          row,
-          column: 1 + o,
-          value: null,
-          style: sectionRow.style,
-          inlineStyle: this.inlineStyle,
-        });
+        const style = resolveStyle(sectionRow.style, undefined, this.context, 'section filler', this.inlineStyle);
+        writeCell(this.context.worksheet, row, 1 + o, null, style);
       }
     }
   }
@@ -506,22 +509,22 @@ function resolveStyle(
   dynamicStyle: StyleValue | undefined,
   context: CompileContext,
   label: string,
-): StyleValue | undefined {
-  if (dynamicStyle === undefined) return staticStyle;
+  inlineStyle?: CellStyleDefinition,
+): CellStyleDefinition | undefined {
+  const styleVal = dynamicStyle !== undefined ? dynamicStyle : staticStyle;
 
-  if (typeof dynamicStyle === 'string') {
-    const styles = context.workbook.styles;
-    if (!styles || !Object.prototype.hasOwnProperty.call(styles, dynamicStyle)) {
-      throw new ReportEngineError(`${label} styleResolver returned unknown style "${dynamicStyle}".`);
+  let baseStyle: CellStyleDefinition | undefined;
+  if (typeof styleVal === 'string') {
+    const registryStyle = context.styleConfig.styles?.[styleVal];
+    if (!registryStyle) {
+      throw new ReportEngineError(`${label} returned unknown style "${styleVal}".`);
     }
-    return dynamicStyle;
+    baseStyle = registryStyle;
+  } else {
+    baseStyle = styleVal;
   }
 
-  if (typeof dynamicStyle !== 'object' || dynamicStyle === null || Array.isArray(dynamicStyle)) {
-    throw new ReportEngineError(`${label} styleResolver must return a style value.`);
-  }
-
-  return dynamicStyle;
+  return mergeCellStyles(mergeCellStyles(context.styleConfig.defaultStyle, baseStyle), inlineStyle);
 }
 
 function blockVariables(context: CompileContext, block: Block): VariableScope {
