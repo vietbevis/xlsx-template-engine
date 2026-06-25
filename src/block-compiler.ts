@@ -166,7 +166,7 @@ class TableBlockCompiler {
 
   /**
    * Tracks all rendered data rows across groups for footer section formulas
-   * (scope: 'allRows'). Built incrementally during writeDataRows.
+   * (scope: 'table'). Built incrementally during writeDataRows.
    */
   private readonly allRendered: RenderedDataRow[] = [];
 
@@ -321,8 +321,8 @@ class TableBlockCompiler {
     const occupied = new Set<number>();
     const placements = this.createSectionCellPlacements(sectionRow, occupied, row);
     const formulaCtx = this.createFormulaContext(row, {
-      currentRows: currentRendered,
-      allRows: this.allRendered,
+      group: currentRendered,
+      table: this.allRendered,
     });
 
     if (sectionRow.height !== undefined) {
@@ -390,7 +390,7 @@ class TableBlockCompiler {
     return placements;
   }
 
-  private createFormulaContext(row: number, scopedRows?: Record<'currentRows' | 'allRows', RenderedDataRow[]>) {
+  private createFormulaContext(row: number, scopedRows?: Record<'group' | 'table', RenderedDataRow[]>) {
     return createTableFormulaContext({
       columnIdMap: this.columnIdMap,
       row,

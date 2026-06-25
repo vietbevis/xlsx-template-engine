@@ -4,8 +4,10 @@ export type CellValue = Exclude<ExcelJS.CellValue, undefined>;
 
 export type CellContent = CellValue | FormulaDefinition;
 
-export type TableColumnNode = Extract<Block, { type: 'table' }>['columns'][number];
-export type TableLeafColumn = TableColumnNode & { children?: undefined };
+export type DefaultRow = Record<string, any>;
+
+export type TableColumnNode<Row = DefaultRow> = TableColumn<Row>;
+export type TableLeafColumn<Row = DefaultRow> = TableColumnNode<Row> & { children?: undefined };
 
 export type FormulaDefinition = FormulaTemplateDefinition | RefFormulaDefinition | RangeFormulaDefinition;
 
@@ -31,7 +33,7 @@ export interface RangeFormulaDefinition {
   scope?: FormulaRangeScope;
 }
 
-export type FormulaRangeScope = 'currentRows' | 'allRows';
+export type FormulaRangeScope = 'group' | 'table';
 
 export type StyleRegistry = Record<string, CellStyleDefinition>;
 
@@ -70,7 +72,7 @@ export interface SheetFreezePane {
   columns?: number;
 }
 
-export type Block = GridBlock | TableBlock;
+export type Block = GridBlock | TableBlock<any>;
 
 export interface BaseBlock {
   type: string;
@@ -96,7 +98,7 @@ export interface GridCell extends StyleReference {
   width?: number;
 }
 
-export interface BaseTableBlock<Row = Record<string, unknown>> extends BaseBlock {
+export interface BaseTableBlock<Row = DefaultRow> extends BaseBlock {
   columns: readonly TableColumn<Row>[];
   headerRowHeights?: readonly number[];
   bodyRowHeight?: number;
@@ -110,13 +112,13 @@ export interface BaseTableBlock<Row = Record<string, unknown>> extends BaseBlock
   border?: TableBorderDefinition;
 }
 
-export interface TableBlock<Row = Record<string, unknown>> extends BaseTableBlock<Row> {
+export interface TableBlock<Row = DefaultRow> extends BaseTableBlock<Row> {
   type: 'table';
   data?: readonly Row[];
   groups?: readonly TableGroup<Row>[];
 }
 
-export interface TableGroup<Row = Record<string, unknown>> {
+export interface TableGroup<Row = DefaultRow> {
   headerRows?: readonly TableSectionRow<Row>[];
   data: readonly Row[];
   footerRows?: readonly TableSectionRow<Row>[];
@@ -124,14 +126,14 @@ export interface TableGroup<Row = Record<string, unknown>> {
 
 export type TableBorderDefinition = ExcelJS.BorderStyle | Partial<ExcelJS.Borders>;
 
-export interface TableSectionRow<Row = Record<string, unknown>> extends StyleReference {
+export interface TableSectionRow<Row = DefaultRow> extends StyleReference {
   resetRows?: boolean;
   hidden?: boolean;
   height?: number;
   cells: readonly TableSectionCell<Row>[];
 }
 
-export interface TableSectionCell<Row = Record<string, unknown>> extends StyleReference {
+export interface TableSectionCell<Row = DefaultRow> extends StyleReference {
   id?: string;
   column?: number;
   columnId?: string;
@@ -141,16 +143,14 @@ export interface TableSectionCell<Row = Record<string, unknown>> extends StyleRe
   colSpan?: number | 'remaining';
 }
 
-export interface TableFooterRow<Row = Record<string, unknown>> extends StyleReference {
+export interface TableFooterRow<Row = DefaultRow> extends StyleReference {
   height?: number;
   cells: readonly TableSectionCell<Row>[];
 }
 
-export type TableSectionCellAccessor<Row = Record<string, unknown>> = (
-  context: TableSectionCellContext<Row>,
-) => CellContent;
+export type TableSectionCellAccessor<Row = DefaultRow> = (context: TableSectionCellContext<Row>) => CellContent;
 
-export interface TableSectionCellContext<Row = Record<string, unknown>> {
+export interface TableSectionCellContext<Row = DefaultRow> {
   rows: Row[];
   allRows: Row[];
   dataIndex: number;
@@ -178,7 +178,7 @@ export interface WriterLink {
 
 // ─── Table column ─────────────────────────────────────────────────────────────
 
-export interface TableColumn<Row = Record<string, unknown>> extends StyleReference {
+export interface TableColumn<Row = DefaultRow> extends StyleReference {
   title: string;
   id?: keyof Row;
   accessor?: (row: Row) => CellContent;

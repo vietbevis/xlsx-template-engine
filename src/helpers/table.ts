@@ -107,7 +107,7 @@ export function createTableInlineStyle(border: TableBorderDefinition | undefined
 export function createSummaryFormula(columnId: string, summary: NonNullable<TableLeafColumn['summary']>): CellContent {
   if (summary && typeof summary === 'object') return summary;
 
-  const range = f.range(columnId, columnId, { scope: 'allRows' });
+  const range = f.range(columnId, columnId, { scope: 'table' });
 
   switch (summary) {
     case 'sum':

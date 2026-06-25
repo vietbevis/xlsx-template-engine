@@ -109,7 +109,7 @@ function createFacultyFooter(facultyId: string) {
       ...numberColumns.map((colId) => ({
         id: `${facultyId}_${colId}`,
         columnId: colId,
-        value: f`SUM(${f.range(colId, colId, { scope: 'currentRows' })})`,
+        value: f`SUM(${f.range(colId, colId, { scope: 'group' })})`,
       })),
     ],
   };
@@ -184,7 +184,7 @@ function createSummaryFooter() {
       },
       ...numberColumns.map((colId) => ({
         columnId: colId,
-        value: f`SUM(${f.range(colId, colId, { scope: 'allRows' })})`,
+        value: f`SUM(${f.range(colId, colId, { scope: 'table' })})`,
       })),
     ],
   };
