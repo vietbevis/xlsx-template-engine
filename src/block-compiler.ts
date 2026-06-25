@@ -35,13 +35,11 @@ import type {
   TableSectionRow,
   WorkbookDefinition,
 } from './types';
-import { interpolateCellValue, interpolateVariables, type VariableScope } from './variable-engine';
 
 export interface CompileContext {
   readonly workbook: WorkbookDefinition;
   readonly sheet: SheetDefinition;
   readonly sheetColumnCount: number;
-  readonly variables: VariableScope;
   readonly registry: AddressRegistry;
   readonly worksheet: ExcelJS.Worksheet;
   readonly styleConfig: {
@@ -76,7 +74,6 @@ interface GridPlacement {
 function compileGridBlock(block: Extract<Block, { type: 'grid' }>, context: CompileContext, startRow: number): number {
   const occupied = new Set<string>();
   const placements: GridPlacement[] = [];
-  const variables = blockVariables(context, block);
   let rowExtent = block.rows.length;
 
   // Pass 1: layout — compute positions and register IDs into registry
@@ -113,7 +110,7 @@ function compileGridBlock(block: Extract<Block, { type: 'grid' }>, context: Comp
   const formulaCtx = createGridFormulaContext(context.registry, context.sheet.id);
 
   for (const p of placements) {
-    const compiled = compileCellContent(interpolateCellValue(p.cell.value, variables), formulaCtx);
+    const compiled = compileCellContent(p.cell.value, formulaCtx);
 
     const style = resolveStyle(
       p.cell.style,
@@ -160,7 +157,6 @@ interface SectionCellPlacement {
 }
 
 class TableBlockCompiler {
-  private readonly variables = blockVariables(this.context, this.block);
   private readonly headerDepth = calculateTableHeaderDepth(this.block.columns);
   private readonly leafColumns = flattenColumns(this.block.columns);
   private readonly columnIdMap = createTableColumnIdMap(this.leafColumns);
@@ -205,13 +201,7 @@ class TableBlockCompiler {
         this.inlineStyle,
       );
 
-      writeCell(
-        this.context.worksheet,
-        startRow + hCell.rowOffset,
-        1 + hCell.columnOffset,
-        interpolateVariables(hCell.title, this.variables),
-        style,
-      );
+      writeCell(this.context.worksheet, startRow + hCell.rowOffset, 1 + hCell.columnOffset, hCell.title, style);
 
       if (hCell.rowSpan > 1 || hCell.colSpan > 1) {
         writeMerge(
@@ -290,7 +280,7 @@ class TableBlockCompiler {
       for (const [colOffset, col] of this.leafColumns.entries()) {
         const rawValue = resolveTableCellValue(rowData, col);
         assertTableCellValue(rawValue);
-        const compiled = compileCellContent(interpolateCellValue(rawValue, this.variables), formulaCtx);
+        const compiled = compileCellContent(rawValue, formulaCtx);
 
         const style = resolveStyle(
           col.bodyStyle ?? col.style ?? bandStyle ?? this.block.bodyStyle,
@@ -351,7 +341,7 @@ class TableBlockCompiler {
       });
 
       assertTableCellValue(rawValue);
-      const compiled = compileCellContent(interpolateCellValue(rawValue, this.variables), formulaCtx);
+      const compiled = compileCellContent(rawValue, formulaCtx);
 
       const style = resolveStyle(
         cell.style ?? sectionRow.style,
@@ -472,14 +462,6 @@ function resolveStyle(
   }
 
   return mergeCellStyles(mergeCellStyles(context.styleConfig.defaultStyle, baseStyle), inlineStyle);
-}
-
-function blockVariables(context: CompileContext, block: Block): VariableScope {
-  return {
-    workbook: context.variables.workbook,
-    sheet: context.variables.sheet,
-    block: block.context,
-  };
 }
 
 function resolveTableCellValue(row: Record<string, unknown>, col: TableLeafColumn): unknown {

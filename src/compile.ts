@@ -7,15 +7,7 @@ import { flattenColumns } from './helpers/table';
 import ExcelJS from 'exceljs';
 import type { Block, GridRow, SheetDefinition, WorkbookDefinition } from './types';
 import { validateWorkbookDefinition } from './validation';
-import type { RenderContext } from './variable-engine';
-
-export interface CompileWorkbookOptions {
-  /**
-   * Runtime context is merged over `workbook.context`, so values passed here
-   * intentionally override same-named definition defaults.
-   */
-  context?: RenderContext;
-}
+export interface CompileWorkbookOptions {}
 
 /**
  * Compile `WorkbookDefinition` → `ExcelJS.Workbook` in a single pass.
@@ -26,7 +18,6 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
   validateWorkbookDefinition(workbook);
 
   const registry = new AddressRegistry();
-  const workbookContext = { ...(workbook.context ?? {}), ...(options.context ?? {}) };
 
   const excelWorkbook = new ExcelJS.Workbook();
   if (workbook.metadata?.author) {
@@ -53,7 +44,6 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
       worksheet,
       styleConfig,
       sheetColumnCount: measureSheetColumnCount(sheet),
-      variables: { workbook: workbookContext, sheet: sheet.context },
       registry,
     };
 
@@ -106,9 +96,7 @@ function assertNeverBlock(block: never): never {
   throw new CompileError(`Unsupported block type "${(block as Block).type}".`);
 }
 
-export interface WorkbookRenderOptions {
-  context?: RenderContext;
-}
+export interface WorkbookRenderOptions {}
 
 export interface WorkbookRenderer {
   writeFile(filePath: string): Promise<void>;

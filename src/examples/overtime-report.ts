@@ -195,7 +195,7 @@ function createFacultySheet(id: string, name: string, facultyTitle: string, data
     id,
     name,
     blocks: [
-      textBlock('{{sheetTitle}}', { style: 'title', height: 28, colSpan: 'remaining' }),
+      textBlock('DANH SÁCH GIẢNG VIÊN VƯỢT GIỜ NĂM 2024-2025', { style: 'title', height: 28, colSpan: 'remaining' }),
       textBlock(facultyTitle, { style: 'title', height: 24, colSpan: 'remaining' }),
       textBlock('', { height: 24, colSpan: 'remaining' }),
       {
@@ -233,15 +233,12 @@ const workbook: WorkbookDefinition = {
       alignment: { horizontal: 'center', vertical: 'middle', wrapText: true },
     },
   },
-  context: {
-    sheetTitle: 'DANH SÁCH GIẢNG VIÊN VƯỢT GIỜ NĂM 2024-2025',
-  },
   sheets: [
     {
       id: 'summary',
       name: 'Tổng hợp',
       blocks: [
-        textBlock('{{sheetTitle}}', { style: 'title', height: 28, colSpan: 'remaining' }),
+        textBlock('DANH SÁCH GIẢNG VIÊN VƯỢT GIỜ NĂM 2024-2025', { style: 'title', height: 28, colSpan: 'remaining' }),
         textBlock('TỔNG HỢP TẤT CẢ CÁC KHOA', { style: 'title', height: 24, colSpan: 'remaining' }),
         textBlock('', { height: 24, colSpan: 'remaining' }),
         {

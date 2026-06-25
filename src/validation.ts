@@ -1,17 +1,24 @@
 import { z, type ZodIssue } from 'zod';
 import { ValidationError } from './errors';
+import { isPlainObject } from './helpers/common';
 import { calculateTableHeaderDepth } from './helpers/table';
 import type { WorkbookDefinition } from './types';
+
+// ─── Primitives ───────────────────────────────────────────────────────────────
 
 const nonEmptyString = z.string().trim().min(1);
 const positiveNumber = z.number().positive();
 const positiveInteger = z.number().int().positive();
+const booleanFlag = z.boolean();
+const recordSchema = z.record(z.string(), z.unknown());
 const styleObjectSchema = z.record(z.string(), z.unknown());
 const styleValueSchema = z.union([nonEmptyString, styleObjectSchema]);
 const colSpanSchema = z.union([positiveInteger, z.literal('remaining')]);
 const functionSchema = z.custom<(...args: never[]) => unknown>((value) => typeof value === 'function', {
   message: 'must be a function',
 });
+
+// ─── Formula ──────────────────────────────────────────────────────────────────
 
 const formulaSchema: z.ZodType<unknown> = z.lazy(() =>
   z.discriminatedUnion('type', [
@@ -27,38 +34,18 @@ const formulaSchema: z.ZodType<unknown> = z.lazy(() =>
       endId: nonEmptyString,
       scope: z.enum(['currentRows', 'allRows']).optional(),
     }),
-    z.object({ type: z.literal('ref'), sheetId: nonEmptyString.optional(), id: nonEmptyString }),
+    z.object({
+      type: z.literal('ref'),
+      sheetId: nonEmptyString.optional(),
+      id: nonEmptyString,
+    }),
   ]),
 );
 
-const formulaRangeSchema = z
-  .object({
-    sheetId: nonEmptyString.optional(),
-    startId: nonEmptyString,
-    endId: nonEmptyString,
-    scope: z.enum(['currentRows', 'allRows']).optional(),
-  })
-  .refine((value) => !(value.sheetId && value.scope), {
-    message: 'must not include both sheetId and scope',
-  });
+// Primitive cell values + formula objects
+const cellContentSchema = z.union([z.null(), z.string(), z.number(), z.boolean(), z.date(), formulaSchema]);
 
-const cellContentSchema = z.custom((value) => {
-  if (
-    value === null ||
-    typeof value === 'string' ||
-    typeof value === 'number' ||
-    typeof value === 'boolean' ||
-    value instanceof Date
-  ) {
-    return true;
-  }
-
-  if (isRecord(value) && typeof value.type === 'string') {
-    return formulaSchema.safeParse(value).success;
-  }
-
-  return isRecord(value);
-});
+// ─── Grid ─────────────────────────────────────────────────────────────────────
 
 const gridCellSchema = z.object({
   id: nonEmptyString.optional(),
@@ -76,6 +63,8 @@ const gridRowSchema = z.object({
   cells: z.array(gridCellSchema),
 });
 
+// ─── Table ────────────────────────────────────────────────────────────────────
+
 const tableSectionCellSchema = z.object({
   id: nonEmptyString.optional(),
   column: positiveInteger.optional(),
@@ -87,19 +76,20 @@ const tableSectionCellSchema = z.object({
   colSpan: colSpanSchema.optional(),
 });
 
-const tableSectionRowSchema = z.object({
-  resetRows: z.boolean().optional(),
-  hidden: z.boolean().optional(),
+/** Shared shape for header/footer section rows — footer omits resetRows & hidden. */
+const baseSectionRowShape = {
   height: positiveNumber.optional(),
   style: styleValueSchema.optional(),
   cells: z.array(tableSectionCellSchema).nonempty(),
+} as const;
+
+const tableSectionRowSchema = z.object({
+  ...baseSectionRowShape,
+  resetRows: booleanFlag.optional(),
+  hidden: booleanFlag.optional(),
 });
 
-const tableFooterRowSchema = z.object({
-  height: positiveNumber.optional(),
-  style: styleValueSchema.optional(),
-  cells: z.array(tableSectionCellSchema).nonempty(),
-});
+const tableFooterRowSchema = z.object(baseSectionRowShape);
 
 const tableColumnSchema: z.ZodType<unknown> = z.lazy(() =>
   z
@@ -110,30 +100,34 @@ const tableColumnSchema: z.ZodType<unknown> = z.lazy(() =>
       children: z.array(tableColumnSchema).nonempty().optional(),
       childrenRowOffset: positiveInteger.optional(),
       width: positiveNumber.optional(),
-      hidden: z.boolean().optional(),
+      hidden: booleanFlag.optional(),
       style: styleValueSchema.optional(),
       headerStyle: styleValueSchema.optional(),
       bodyStyle: styleValueSchema.optional(),
       styleResolver: functionSchema.optional(),
       summary: z.union([z.enum(['sum', 'count', 'average']), formulaSchema]).optional(),
     })
-    .superRefine((column, ctx) => {
-      if (column.children) {
-        if (column.id !== undefined || column.accessor !== undefined) {
+    .superRefine((col, ctx) => {
+      if (col.children) {
+        if (col.id !== undefined || col.accessor !== undefined) {
           ctx.addIssue({ code: 'custom', message: 'with children must not include id or accessor' });
         }
         return;
       }
-
-      if (column.childrenRowOffset !== undefined) {
+      if (col.childrenRowOffset !== undefined) {
         ctx.addIssue({ code: 'custom', message: 'childrenRowOffset requires children' });
       }
-
-      if (column.id === undefined && column.accessor === undefined) {
+      if (col.id === undefined && col.accessor === undefined) {
         ctx.addIssue({ code: 'custom', message: 'leaf column must include an id or accessor' });
       }
     }),
 );
+
+const tableGroupSchema = z.object({
+  headerRows: z.array(tableSectionRowSchema).optional(),
+  data: z.array(recordSchema),
+  footerRows: z.array(tableSectionRowSchema).optional(),
+});
 
 const baseTableShape = {
   columns: z.array(tableColumnSchema).nonempty(),
@@ -147,38 +141,25 @@ const baseTableShape = {
   summaryStyle: styleValueSchema.optional(),
   rowHidden: functionSchema.optional(),
   border: z.unknown().optional(),
-};
+} as const;
+
+// ─── Block & Workbook ─────────────────────────────────────────────────────────
 
 const blockSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal('grid'),
     rows: z.array(gridRowSchema),
-    context: z.record(z.string(), z.unknown()).optional(),
   }),
   z
     .object({
       type: z.literal('table'),
       ...baseTableShape,
-      data: z.array(z.record(z.string(), z.unknown())).optional(),
-      groups: z
-        .array(
-          z.object({
-            headerRows: z.array(tableSectionRowSchema).optional(),
-            data: z.array(z.record(z.string(), z.unknown())),
-            footerRows: z.array(tableSectionRowSchema).optional(),
-          }),
-        )
-        .optional(),
-      context: z.record(z.string(), z.unknown()).optional(),
+      data: z.array(recordSchema).optional(),
+      groups: z.array(tableGroupSchema).optional(),
     })
-    .refine(
-      (val) => {
-        const hasData = val.data !== undefined;
-        const hasGroups = val.groups !== undefined;
-        return (hasData && !hasGroups) || (!hasData && hasGroups);
-      },
-      { message: "TableBlock must have exactly one of 'data' or 'groups'." },
-    ),
+    .refine((val) => (val.data !== undefined) !== (val.groups !== undefined), {
+      message: "TableBlock must have exactly one of 'data' or 'groups'.",
+    }),
 ]);
 
 const workbookSchema = z.object({
@@ -193,16 +174,14 @@ const workbookSchema = z.object({
     .optional(),
   defaultStyle: styleObjectSchema.optional(),
   styles: z.record(z.string(), styleObjectSchema).optional(),
-  context: z.record(z.string(), z.unknown()).optional(),
   sheets: z
     .array(
       z.object({
         id: nonEmptyString,
         name: nonEmptyString,
-        context: z.record(z.string(), z.unknown()).optional(),
         freezePane: z
           .object({ rows: positiveInteger.optional(), columns: positiveInteger.optional() })
-          .refine((value) => value.rows !== undefined || value.columns !== undefined, {
+          .refine((p) => p.rows !== undefined || p.columns !== undefined, {
             message: 'must include rows or columns',
           })
           .optional(),
@@ -212,183 +191,157 @@ const workbookSchema = z.object({
     .nonempty('Workbook definition must include at least one sheet.'),
 });
 
+// ─── Public entry point ───────────────────────────────────────────────────────
+
 export function validateWorkbookDefinition(workbook: WorkbookDefinition): void {
   const parsed = workbookSchema.safeParse(workbook);
 
   if (!parsed.success) {
-    throw createValidationError(parsed.error.issues);
+    throw buildValidationError(parsed.error.issues);
   }
 
-  validateWorkbookSemantics(parsed.data as WorkbookDefinition);
+  validateSemantics(parsed.data as WorkbookDefinition);
 }
 
-function validateWorkbookSemantics(workbook: WorkbookDefinition): void {
+// ─── Semantic validation ──────────────────────────────────────────────────────
+
+function validateSemantics(workbook: WorkbookDefinition): void {
   validateStyleRegistryNames(workbook.styles);
 
-  const sheetIds = new Set<string>();
-  const sheetNames = new Set<string>();
+  const seenIds = new Set<string>();
+  const seenNames = new Set<string>();
 
-  for (const [sheetIndex, sheet] of workbook.sheets.entries()) {
+  for (const sheet of workbook.sheets) {
     validateSheetName(sheet.name, sheet.id);
 
-    if (sheetIds.has(sheet.id)) {
-      throw new ValidationError(`Duplicate sheet id "${sheet.id}".`);
-    }
-
-    const normalizedSheetName = sheet.name.trim().toLowerCase();
-
-    if (sheetNames.has(normalizedSheetName)) {
+    if (seenIds.has(sheet.id)) throw new ValidationError(`Duplicate sheet id "${sheet.id}".`);
+    if (seenNames.has(sheet.name.trim().toLowerCase()))
       throw new ValidationError(`Duplicate sheet name "${sheet.name}".`);
-    }
 
-    sheetIds.add(sheet.id);
-    sheetNames.add(normalizedSheetName);
+    seenIds.add(sheet.id);
+    seenNames.add(sheet.name.trim().toLowerCase());
 
     for (const [blockIndex, block] of sheet.blocks.entries()) {
-      validateBlockSemantics(block, sheet.id, blockIndex, workbook.styles);
-      rejectDeprecatedBlockFields(block, sheet.id, blockIndex);
+      const blockLabel = blockPath(sheet.id, block, blockIndex);
+      validateBlockSemantics(block, blockLabel, workbook.styles);
+      rejectDeprecatedFields(block, blockLabel);
     }
   }
 }
 
 function validateBlockSemantics(
   block: WorkbookDefinition['sheets'][number]['blocks'][number],
-  sheetId: string,
-  blockIndex: number,
+  label: string,
   styles: WorkbookDefinition['styles'],
 ): void {
-  validateStyleReferences(block, createBlockPath(sheetId, block, blockIndex), styles);
+  validateStyleRefs(block, label, styles);
 
-  if (block.type === 'table') {
-    const label = createBlockPath(sheetId, block, blockIndex);
+  if (block.type !== 'table') return;
 
-    if (block.headerRowHeights && block.headerRowHeights.length > calculateTableHeaderDepth(block.columns)) {
-      throw new ValidationError(`${label} headerRowHeights must not exceed header row count.`);
-    }
-
-    validateTableDataRows(block.data ? block.data : block.groups!.flatMap((group) => group.data), `${label} data`);
+  if (block.headerRowHeights && block.headerRowHeights.length > calculateTableHeaderDepth(block.columns)) {
+    throw new ValidationError(`${label} headerRowHeights must not exceed header row count.`);
   }
+
+  const rows = block.data ?? block.groups!.flatMap((g) => g.data);
+  validateTableDataRows(rows, `${label} data`);
 }
 
-function validateStyleReferences(value: unknown, label: string, styles: WorkbookDefinition['styles']): void {
-  if (!isRecord(value)) {
-    return;
-  }
+// ─── Style reference validation ───────────────────────────────────────────────
 
-  for (const key of ['style', 'headerStyle', 'bodyStyle', 'evenRowStyle', 'oddRowStyle', 'summaryStyle'] as const) {
+const STYLE_KEYS = ['style', 'headerStyle', 'bodyStyle', 'evenRowStyle', 'oddRowStyle', 'summaryStyle'] as const;
+
+function validateStyleRefs(value: unknown, label: string, styles: WorkbookDefinition['styles']): void {
+  if (!isPlainObject(value)) return;
+
+  for (const key of STYLE_KEYS) {
     const style = value[key];
-
-    if (typeof style === 'string' && (!styles || !Object.prototype.hasOwnProperty.call(styles, style))) {
+    if (typeof style === 'string' && !styles?.[style]) {
       throw new ValidationError(`${label} ${key} references unknown style "${style}".`);
     }
   }
 
   for (const [key, child] of Object.entries(value)) {
-    if (key === 'styles') {
-      continue;
-    }
+    if (key === 'styles') continue;
 
     if (Array.isArray(child)) {
-      child.forEach((item, index) => validateStyleReferences(item, `${label} ${key} ${index}`, styles));
-    } else if (isRecord(child) && typeof child.type !== 'string') {
-      validateStyleReferences(child, `${label} ${key}`, styles);
+      child.forEach((item, i) => validateStyleRefs(item, `${label} ${key} ${i}`, styles));
+    } else if (isPlainObject(child) && typeof child.type !== 'string') {
+      validateStyleRefs(child, `${label} ${key}`, styles);
     }
   }
 }
 
 function validateStyleRegistryNames(styles: WorkbookDefinition['styles']): void {
-  for (const styleName of Object.keys(styles ?? {})) {
-    if (styleName.trim() === '') {
-      throw new ValidationError('Workbook style names must be non-empty.');
-    }
+  for (const name of Object.keys(styles ?? {})) {
+    if (name.trim() === '') throw new ValidationError('Workbook style names must be non-empty.');
   }
 }
+
+// ─── Table data row validation ────────────────────────────────────────────────
 
 function validateTableDataRows(rows: readonly unknown[], label: string): void {
-  for (const [itemIndex, item] of rows.entries()) {
-    if (isRecord(item) && item.type === 'section') {
-      throw new ValidationError(`${label} ${itemIndex} is a section row. Move it to headerRows or footerRows.`);
+  for (const [i, item] of rows.entries()) {
+    if (isPlainObject(item) && item.type === 'section') {
+      throw new ValidationError(`${label} ${i} is a section row. Move it to headerRows or footerRows.`);
     }
   }
 }
 
-function rejectDeprecatedBlockFields(
-  block: WorkbookDefinition['sheets'][number]['blocks'][number],
-  sheetId: string,
-  blockIndex: number,
-): void {
-  visitRecords(block, (record, path) => {
-    const label = path.length === 0 ? createBlockPath(sheetId, block, blockIndex) : path.join(' ');
+// ─── Deprecated field detection ───────────────────────────────────────────────
 
-    rejectDeprecatedFields(record, label, ['key', 'columnKey', 'startKey', 'endKey']);
-  });
-}
+const DEPRECATED_FIELDS = ['key', 'columnKey', 'startKey', 'endKey'] as const;
 
-function rejectDeprecatedFields(value: Record<string, unknown>, label: string, fields: readonly string[]): void {
-  for (const field of fields) {
+function rejectDeprecatedFields(value: unknown, rootLabel: string, path: string[] = []): void {
+  if (!isPlainObject(value)) return;
+
+  const label = path.length === 0 ? rootLabel : path.join(' ');
+
+  for (const field of DEPRECATED_FIELDS) {
     if (Object.prototype.hasOwnProperty.call(value, field)) {
       throw new ValidationError(`${label} uses deprecated "${field}"; use id-based fields.`);
     }
   }
-}
-
-function visitRecords(
-  value: unknown,
-  visitor: (record: Record<string, unknown>, path: string[]) => void,
-  path: string[] = [],
-): void {
-  if (!isRecord(value)) {
-    return;
-  }
-
-  visitor(value, path);
 
   for (const [key, child] of Object.entries(value)) {
     if (Array.isArray(child)) {
-      child.forEach((item, index) => visitRecords(item, visitor, [...path, key, String(index)]));
-    } else if (isRecord(child)) {
-      visitRecords(child, visitor, [...path, key]);
+      child.forEach((item, i) => rejectDeprecatedFields(item, rootLabel, [...path, key, String(i)]));
+    } else if (isPlainObject(child)) {
+      rejectDeprecatedFields(child, rootLabel, [...path, key]);
     }
   }
 }
 
-function validateSheetName(sheetName: string, sheetId: string): void {
-  if (sheetName.length > 31) {
-    throw new ValidationError(`Sheet "${sheetId}" name must be 31 characters or fewer.`);
-  }
+// ─── Sheet name validation ────────────────────────────────────────────────────
 
-  if (/[:\\/?*[\]]/.test(sheetName)) {
-    throw new ValidationError(`Sheet "${sheetId}" name contains characters Excel does not allow.`);
+const INVALID_SHEET_CHARS = /[:\\/?*[\]]/;
+
+function validateSheetName(name: string, id: string): void {
+  if (name.length > 31) {
+    throw new ValidationError(`Sheet "${id}" name must be 31 characters or fewer.`);
+  }
+  if (INVALID_SHEET_CHARS.test(name)) {
+    throw new ValidationError(`Sheet "${id}" name contains characters Excel does not allow.`);
   }
 }
 
-function createValidationError(issues: readonly ZodIssue[]): ValidationError {
+// ─── Error helpers ────────────────────────────────────────────────────────────
+
+function buildValidationError(issues: readonly ZodIssue[]): ValidationError {
   const issue = issues[0];
-
-  if (!issue) {
-    return new ValidationError('Workbook definition is invalid.');
-  }
-
+  if (!issue) return new ValidationError('Workbook definition is invalid.');
   return new ValidationError(formatIssueMessage(issue));
 }
 
 function formatIssueMessage(issue: ZodIssue): string {
-  if (issue.message === 'Workbook definition must include at least one sheet.') {
-    return issue.message;
-  }
-
+  if (issue.message === 'Workbook definition must include at least one sheet.') return issue.message;
   const path = issue.path.length ? issue.path.join('.') : 'Workbook definition';
   return `${path} ${issue.message}`;
 }
 
-function createBlockPath(
+function blockPath(
   sheetId: string,
   block: WorkbookDefinition['sheets'][number]['blocks'][number],
-  blockIndex: number,
+  index: number,
 ): string {
-  return `sheet "${sheetId}" > ${block.type} block ${blockIndex + 1}`;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value);
+  return `sheet "${sheetId}" > ${block.type} block ${index + 1}`;
 }

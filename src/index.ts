@@ -35,8 +35,7 @@ export type {
 } from './types';
 
 export type { CompileWorkbookOptions, WorkbookRenderer, WorkbookRenderOptions } from './compile';
-export type { RenderContext, VariableScope } from './variable-engine';
 
 export { compileWorkbook, renderWorkbook } from './compile';
-export { dividerBlock, spacerBlock, textBlock, titleBlock } from './factories';
+export { dividerBlock, spacerBlock, textBlock } from './factories';
 export { isFormulaDefinition } from './formula-engine';

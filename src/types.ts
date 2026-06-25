@@ -56,14 +56,12 @@ export interface WorkbookDefinition {
   metadata?: WorkbookMetadata;
   defaultStyle?: CellStyleDefinition;
   styles?: StyleRegistry;
-  context?: Record<string, unknown>;
   sheets: readonly SheetDefinition[];
 }
 
 export interface SheetDefinition {
   id: string;
   name: string;
-  context?: Record<string, unknown>;
   freezePane?: SheetFreezePane;
   blocks: readonly Block[];
 }
@@ -77,7 +75,6 @@ export type Block = GridBlock | TableBlock;
 
 export interface BaseBlock {
   type: string;
-  context?: Record<string, unknown>;
 }
 
 export interface GridBlock extends BaseBlock {
