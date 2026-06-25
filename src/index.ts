@@ -52,22 +52,10 @@ export type {
   TypedFormulaDefinition,
   WorkbookDefinition,
   WorkbookMetadata,
-  WriterCell,
-  WriterColumnVisibility,
-  WriterColumnWidth,
-  WriterLink,
-  WriterMergeRange,
-  WriterRowHeight,
-  WriterRowVisibility,
-  WriterSheetView,
 } from './types';
 
-export { compileWorkbook } from './compile';
-export { isFormulaDefinition } from './formula-engine';
-
-export type { CompileWorkbookOptions } from './compile';
+export type { CompileWorkbookOptions, WorkbookRenderer, WorkbookRenderOptions } from './compile';
 export type { RenderContext, VariableScope } from './variable-engine';
 
-export { renderWorkbook } from './renderer';
-
-export type { WorkbookRenderer, WorkbookRenderOptions } from './renderer';
+export { compileWorkbook, renderWorkbook } from './compile';
+export { isFormulaDefinition } from './formula-engine';

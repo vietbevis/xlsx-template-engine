@@ -1,5 +1,5 @@
 import { mkdir } from 'node:fs/promises';
-import { renderWorkbook } from '../renderer';
+import { renderWorkbook } from '../compile';
 import type { WorkbookDefinition } from '../types';
 
 const danhSachDoiTuong = [

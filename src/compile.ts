@@ -1,5 +1,6 @@
 import { AddressRegistry } from './address-registry';
 import { compileBlock } from './block-compiler';
+import type { Writable } from 'stream';
 import { CompileError, FormulaError, ReportEngineError, ValidationError } from './errors';
 import { cloneStylePart } from './helpers/style';
 import { flattenColumns } from './helpers/table';
@@ -33,7 +34,7 @@ export function compileWorkbook(workbook: WorkbookDefinition, options: CompileWo
     defaultStyle: workbook.defaultStyle
       ? (cloneStylePart(workbook.defaultStyle) as typeof workbook.defaultStyle)
       : undefined,
-    styles: workbook.styles ? cloneStyles(workbook.styles) : undefined,
+    styles: workbook.styles,
   };
 
   for (const sheet of workbook.sheets) {
@@ -79,11 +80,7 @@ function normalizeCompileError(error: unknown, sheetId: string, blockIndex: numb
   return error instanceof Error ? error : new CompileError(String(error), { sheetId, blockIndex });
 }
 
-function cloneStyles(styles: NonNullable<WorkbookDefinition['styles']>): NonNullable<WorkbookDefinition['styles']> {
-  return Object.fromEntries(
-    Object.entries(styles).map(([name, style]) => [name, cloneStylePart(style) as typeof style]),
-  );
-}
+// Removed cloneStyles as SheetWriter clones on assignment.
 
 function measureSheetColumnCount(sheet: SheetDefinition): number {
   return Math.max(1, ...sheet.blocks.map(measureBlockColumnCount));
@@ -116,4 +113,21 @@ function measureGridRowColumnCount(row: GridRow): number {
 
 function assertNeverBlock(block: never): never {
   throw new CompileError(`Unsupported block type "${(block as Block).type}".`);
+}
+
+export interface WorkbookRenderOptions {
+  context?: RenderContext;
+}
+
+export interface WorkbookRenderer {
+  writeFile(filePath: string): Promise<void>;
+  writeBuffer(): Promise<Buffer>;
+  writeStream(stream: Writable): Promise<void>;
+}
+
+export function renderWorkbook(
+  workbook: WorkbookDefinition,
+  options: CompileWorkbookOptions = {},
+): ExcelJsWorkbook {
+  return compileWorkbook(workbook, options);
 }

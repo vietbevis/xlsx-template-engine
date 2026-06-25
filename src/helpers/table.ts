@@ -175,9 +175,3 @@ function assertNeverSummary(value: never): never {
   throw new ReportEngineError(`Unsupported table summary "${String(value)}".`);
 }
 
-export function collectTableDataRows(
-  block: Extract<Block, { type: 'table' | 'table-groups' }>,
-): Record<string, unknown>[] {
-  if (block.type === 'table') return [...block.data] as Record<string, unknown>[];
-  return block.groups.flatMap((group) => group.data) as Record<string, unknown>[];
-}
